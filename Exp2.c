@@ -167,6 +167,8 @@ typedef struct {
 typedef struct {
     pPosProduction pos_productions;
     int pos_production_nums;
+    int* non_core_productions;
+    int non_core_production_nums;
 } State, *pState;
 
 typedef struct {
@@ -187,24 +189,25 @@ State mergeState(State a, State b)
     memcpy(ret.pos_productions + a.pos_production_nums, b.pos_productions, sizeof(PosProduction) * b.pos_production_nums);
     free(a.pos_productions);
     free(b.pos_productions);
-    return ret;
-}
-
-void printPosProduction(PosProduction pos_production)
-{
-    char temp[MAX_TOKEN_LEN];
-    get_lex(pos_production.production.production, temp);
-    printf("%s -> ", temp);
-    for (int k = 0; k < pos_production.production.gen_nums; ++k)
+    ret.non_core_production_nums = 0;
+    int * tmp = (int *)malloc(sizeof(int) * (a.non_core_production_nums + b.non_core_production_nums));
+    for (int i = 0; i < a.non_core_production_nums; ++i)
     {
-        if (k == pos_production.dot_pos)
-            printf(". ");
-        get_lex(pos_production.production.generative[k], temp);
-        printf("%s ", temp);
+        int j;
+        for (j = 0; j < b.non_core_production_nums; ++j)
+            if (a.non_core_productions[i] == b.non_core_productions[j])
+                break;
+        if (j == b.non_core_production_nums)
+            tmp[ret.non_core_production_nums++] = a.non_core_productions[i];
     }
-    if (pos_production.production.gen_nums == pos_production.dot_pos)
-            printf(".");
-    printf("\n");
+    ret.non_core_productions = (int *)malloc(sizeof(int) * (ret.non_core_production_nums + b.non_core_production_nums));
+    memcpy(ret.non_core_productions, tmp, sizeof(int) * ret.non_core_production_nums);
+    memcpy(ret.non_core_productions + ret.non_core_production_nums, b.non_core_productions, sizeof(int) * b.non_core_production_nums);
+    ret.non_core_production_nums += b.non_core_production_nums;
+    free(tmp);
+    free(a.non_core_productions);
+    free(b.non_core_productions);
+    return ret;
 }
 
 int sameState(const State a, const State b)
@@ -218,21 +221,24 @@ int sameState(const State a, const State b)
         {
             // 如果a中的某条点规则与b完全一致
             if (a.pos_productions[i].production.id == b.pos_productions[j].production.id
-//            && a.pos_productions[i].dot_pos == b.pos_productions[j].dot_pos
+            && a.pos_productions[i].dot_pos == b.pos_productions[j].dot_pos
            )
             {
-//                if (a.pos_productions[i].dot_pos != b.pos_productions[j].dot_pos)
-//                {
-//                    printf("A[%d]:", i);
-//                    printPosProduction(a.pos_productions[i]);
-//                    printf("B[%d]:", j);
-//                    printPosProduction(b.pos_productions[j]);
-//                }
                 break;
             }
         }
         // 说明a中有一条规则b中没有相同的
         if (j == b.pos_production_nums)
+            return 0;
+    }
+    for (int i = 0; i < a.non_core_production_nums; ++i)
+    {
+        int j;
+        for (j = 0; j < b.non_core_production_nums; ++j)
+            // 如果a中的某条非核心规则与b一致
+            if (a.non_core_productions[i] == b.non_core_productions[j])
+                break;
+        if (j == b.non_core_production_nums)
             return 0;
     }
     return 1;
@@ -243,7 +249,8 @@ State closure(PosProduction pos_production, Grammar grammar)
     PosProduction prods[100];
     prods[0] = pos_production;
     int prod_nums = 1;
-
+    int non_core_productions[100];
+    int non_core_prod_nums = 0;
     while (1)
     {
         int last_prod_nums = prod_nums;
@@ -273,6 +280,18 @@ State closure(PosProduction pos_production, Grammar grammar)
                         {
                             PosProduction temp = {.production = grammar.productions[j], .dot_pos = 0};
                             prods[prod_nums++] = temp;
+
+                            // 判断当前规则对应的产生符号是否已经加入了非核心产生式
+                            int l;
+                            for (l = 0; l < non_core_prod_nums; ++l)
+                            {
+                                if (non_core_productions[l] == grammar.productions[j].production)
+                                {
+                                    break;
+                                }
+                            }
+                            if (l == non_core_prod_nums)
+                                non_core_productions[non_core_prod_nums++] = grammar.productions[j].production;
                             if (prod_nums >= 100)
                             {
                                 print_error("Closure buffer overflow, exit.");
@@ -287,26 +306,78 @@ State closure(PosProduction pos_production, Grammar grammar)
             break;
     }
     State ret;
-    ret.pos_productions = (pPosProduction)malloc(sizeof(PosProduction) * prod_nums);
-    memcpy(ret.pos_productions, prods, sizeof(PosProduction) * prod_nums);
-    ret.pos_production_nums = prod_nums;
+    ret.pos_productions = (pPosProduction)malloc(sizeof(PosProduction));
+    memcpy(ret.pos_productions, prods, sizeof(PosProduction));
+    ret.pos_production_nums = 1;
+    if (non_core_prod_nums > 0)
+    {
+        ret.non_core_productions = (int *) malloc(sizeof(int) * non_core_prod_nums);
+        memcpy(ret.non_core_productions, non_core_productions, sizeof(int) * non_core_prod_nums);
+    }
+    else
+        ret.non_core_productions = NULL;
+    ret.non_core_production_nums = non_core_prod_nums;
     return ret;
 }
 
 State gotoState(State state, int ch, Grammar grammar)
 {
-    State ret = {NULL, 0};
+    State ret = {NULL, 0, NULL, 0};
     for (int i = 0; i < state.pos_production_nums; ++i)
     {
         if (state.pos_productions[i].dot_pos < state.pos_productions[i].production.gen_nums
             && state.pos_productions[i].production.generative[state.pos_productions[i].dot_pos] == ch)
         {
             PosProduction temp = state.pos_productions[i];
-            temp.dot_pos++;
+            ++(temp.dot_pos);
             ret = mergeState(ret, closure(temp, grammar));
         }
     }
+    for (int i = 0; i < state.non_core_production_nums; ++i)
+    {
+        for (int j = 0; j < grammar.production_nums; ++j)
+        {
+            if (grammar.productions[j].production == state.non_core_productions[i]
+                && grammar.productions[j].generative[0] == ch)
+            {
+                PosProduction temp = {.production = grammar.productions[j], .dot_pos = 1};
+                ret = mergeState(ret, closure(temp, grammar));
+            }
+        }
+    }
     return ret;
+}
+
+void printState(State state)
+{
+    char temp[MAX_TOKEN_LEN];
+    for (int j = 0; j < state.pos_production_nums; ++j)
+    {
+        get_lex(state.pos_productions[j].production.production, temp);
+        printf("%s -> ", temp);
+        for (int k = 0; k < state.pos_productions[j].production.gen_nums; ++k)
+        {
+            if (k == state.pos_productions[j].dot_pos)
+                printf(". ");
+            get_lex(state.pos_productions[j].production.generative[k], temp);
+            printf("%s ", temp);
+        }
+        if (state.pos_productions[j].production.gen_nums == state.pos_productions[j].dot_pos)
+                printf(".");
+        printf("\n");
+    }
+    printf("Non-core productions: ");
+    for (int i = 0; i < state.non_core_production_nums; ++i)
+    {
+        get_lex(state.non_core_productions[i], temp);
+        printf("%s ", temp);
+    }
+    printf("\n");
+    for (int i = 0; i < state.non_core_production_nums; ++i)
+    {
+        get_lex(state.non_core_productions[i], temp);
+        printf("%s ", temp);
+    }
 }
 
 void printStates(AutomatonStates automaton_states)
@@ -317,22 +388,7 @@ void printStates(AutomatonStates automaton_states)
     for (int i = 0; i < automaton_states.state_nums; ++i)
     {
         printf("State %d:\n", i);
-        for (int j = 0; j < automaton_states.states[i].pos_production_nums; ++j)
-        {
-            get_lex(automaton_states.states[i].pos_productions[j].production.production, temp);
-            printf("%s -> ", temp);
-            for (int k = 0; k < automaton_states.states[i].pos_productions[j].production.gen_nums; ++k)
-            {
-                if (k == automaton_states.states[i].pos_productions[j].dot_pos)
-                    printf(". ");
-                get_lex(automaton_states.states[i].pos_productions[j].production.generative[k], temp);
-                printf("%s ", temp);
-            }
-            if (automaton_states.states[i].pos_productions[j].production.gen_nums == automaton_states.states[i].pos_productions[j].dot_pos)
-                    printf(".");
-            printf("\n");
-        }
-
+        printState(automaton_states.states[i]);
     }
 }
 
@@ -412,13 +468,15 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                     {
                         // 此时新增的state在最后一轮for循环中一定会被处理，因此此处不用填写action表
                         states[state_nums++] = temp;
-                        if (state_nums >= 512)
+
+//                        char t[MAX_TOKEN_LEN];
+//                        get_lex(j, t);
+//                        printf("New state [%d], from state [%d] read character [%s]\n", state_nums - 1, i, t);
+//                        printState(temp);
+
+                        if (state_nums >= 100)
                         {
-                            print_error("State buffer overflow, exit. Now states are: \n");
-                            automaton_states->state_nums = state_nums;
-                            automaton_states->states = (pState)malloc(sizeof(State) * state_nums);
-                            memcpy(automaton_states->states, states, sizeof(State) * state_nums);
-                            printStates(*automaton_states);
+                            print_error("State buffer overflow, exit.");
                             exit(-1);
                         }
                     }
