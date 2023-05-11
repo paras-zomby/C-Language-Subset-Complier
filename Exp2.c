@@ -174,12 +174,6 @@ typedef struct {
     int state_nums;
 } AutomatonStates;
 
-int sameProduction(const Production a, const Production b)
-{
-    return a.production == b.production && a.gen_nums == b.gen_nums
-    && memcmp(a.generative, b.generative, sizeof(int) * a.gen_nums) == 0;
-}
-
 State mergeState(State a, State b)
 {
     if (a.pos_production_nums == 0)
@@ -196,6 +190,23 @@ State mergeState(State a, State b)
     return ret;
 }
 
+void printPosProduction(PosProduction pos_production)
+{
+    char temp[MAX_TOKEN_LEN];
+    get_lex(pos_production.production.production, temp);
+    printf("%s -> ", temp);
+    for (int k = 0; k < pos_production.production.gen_nums; ++k)
+    {
+        if (k == pos_production.dot_pos)
+            printf(". ");
+        get_lex(pos_production.production.generative[k], temp);
+        printf("%s ", temp);
+    }
+    if (pos_production.production.gen_nums == pos_production.dot_pos)
+            printf(".");
+    printf("\n");
+}
+
 int sameState(const State a, const State b)
 {
     if (a.pos_production_nums != b.pos_production_nums)
@@ -206,11 +217,17 @@ int sameState(const State a, const State b)
         for (j = 0; j < b.pos_production_nums; ++j)
         {
             // 如果a中的某条点规则与b完全一致
-            if (a.pos_productions[i].production.production == b.pos_productions[j].production.production
-            && a.pos_productions[i].production.gen_nums == b.pos_productions[j].production.gen_nums
-            && 0 == memcmp(a.pos_productions[i].production.generative, b.pos_productions[j].production.generative,
-                           sizeof(int) * a.pos_productions[i].production.gen_nums))
+            if (a.pos_productions[i].production.id == b.pos_productions[j].production.id
+//            && a.pos_productions[i].dot_pos == b.pos_productions[j].dot_pos
+           )
             {
+//                if (a.pos_productions[i].dot_pos != b.pos_productions[j].dot_pos)
+//                {
+//                    printf("A[%d]:", i);
+//                    printPosProduction(a.pos_productions[i]);
+//                    printf("B[%d]:", j);
+//                    printPosProduction(b.pos_productions[j]);
+//                }
                 break;
             }
         }
@@ -247,7 +264,7 @@ State closure(PosProduction pos_production, Grammar grammar)
                         for (k = 0; k < prod_nums; ++k)
                         {
                             // 因为新加入的点规则的点一定在生成式的最前面，因此没必要比较点的位置
-                            if (sameProduction(grammar.productions[j], prods[k].production))
+                            if (j == prods[k].production.id)
                             {
                                 break;
                             }
@@ -397,7 +414,11 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                         states[state_nums++] = temp;
                         if (state_nums >= 512)
                         {
-                            print_error("State buffer overflow, exit.");
+                            print_error("State buffer overflow, exit. Now states are: \n");
+                            automaton_states->state_nums = state_nums;
+                            automaton_states->states = (pState)malloc(sizeof(State) * state_nums);
+                            memcpy(automaton_states->states, states, sizeof(State) * state_nums);
+                            printStates(*automaton_states);
                             exit(-1);
                         }
                     }
