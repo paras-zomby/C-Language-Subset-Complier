@@ -6,6 +6,7 @@
 
 // 读入语法状态的表达式，并转换成数据结构
 typedef struct {
+    int id;             // 表示这条产生式是第几条
     int production;
     int generative[10];
     int gen_nums;
@@ -66,7 +67,7 @@ void get_lex(int id, char temp[MAX_TOKEN_LEN])
 
 Grammar processGrammar(FILE *fp)
 {
-    Production start_production = {.production = 0, .gen_nums = 1, .generative = {1}};
+    Production start_production = {.id = 0, .production = 0, .gen_nums = 1, .generative = {1}};
     Production production_buffer[1024];
     production_buffer[0] = start_production;
     int now_production_num = 1;
@@ -109,6 +110,7 @@ Grammar processGrammar(FILE *fp)
             {
                 if (prod == 0 && production_buffer[now_production_num].gen_nums > 0)
                 {
+                    production_buffer[now_production_num].id = now_production_num;
                     ++now_production_num;
                     if (now_production_num >= 1024)
                     {
@@ -134,6 +136,23 @@ Grammar processGrammar(FILE *fp)
     grammar.productions = (pProduction) malloc(sizeof(Production) * now_production_num);
     memcpy(grammar.productions, production_buffer, sizeof(Production) * now_production_num);
     return grammar;
+}
+
+void printGrammar(Grammar grammar)
+{
+    char temp[MAX_TOKEN_LEN];
+    printf("=====Grammar=====\n");
+    for (int i = 0; i < grammar.production_nums; ++i)
+    {
+        get_lex(grammar.productions[i].production, temp);
+        printf("%s -> ", temp);
+        for (int j = 0; j < grammar.productions[i].gen_nums; ++j)
+        {
+            get_lex(grammar.productions[i].generative[j], temp);
+            printf("%s ", temp);
+        }
+        printf("\n");
+    }
 }
 
 // 生成first集合和follow集合(?)
@@ -273,13 +292,74 @@ State gotoState(State state, int ch, Grammar grammar)
     return ret;
 }
 
-AutomatonStates items(Grammar grammar)
+void printStates(AutomatonStates automaton_states)
 {
-    AutomatonStates automaton_states = {NULL, 0};
-    if (grammar.production_nums == 0)
+    char temp[MAX_TOKEN_LEN];
+    printf("=====Automaton States=====\n");
+    printf("Automaton state nums: %d\n", automaton_states.state_nums);
+    for (int i = 0; i < automaton_states.state_nums; ++i)
     {
-        return automaton_states;
+        printf("State %d:\n", i);
+        for (int j = 0; j < automaton_states.states[i].pos_production_nums; ++j)
+        {
+            get_lex(automaton_states.states[i].pos_productions[j].production.production, temp);
+            printf("%s -> ", temp);
+            for (int k = 0; k < automaton_states.states[i].pos_productions[j].production.gen_nums; ++k)
+            {
+                if (k == automaton_states.states[i].pos_productions[j].dot_pos)
+                    printf(". ");
+                get_lex(automaton_states.states[i].pos_productions[j].production.generative[k], temp);
+                printf("%s ", temp);
+            }
+            if (automaton_states.states[i].pos_productions[j].production.gen_nums == automaton_states.states[i].pos_productions[j].dot_pos)
+                    printf(".");
+            printf("\n");
+        }
+
     }
+}
+
+// 根据自动机状态们生成action表和goto表
+typedef struct {
+    enum{
+        GOTO_STATE = 1,     // 用GOTO表转移
+        SHIFT_STATE = 2,    // 直接ACTION表转移
+        REDUCE_STATE = 3,   // 使用某条语法规则规约
+        ACCEPT_STATE = 4,   // 接受状态
+        ERROR_STATE = 5     // 错误状态
+    } action_type;
+    int value;
+} Action, *pAction;
+
+typedef struct {
+    pAction actions;    // 前terminal_nums个是action表，后non_terminal_nums个是goto表, 最后一维是终止符号
+    int action_nums;    // 元素总数
+    int state_nums;     // 状态数，也是表格的行数
+} ActionTable, *pActionTable;
+
+void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTable *action_table)
+{
+    // 检查传入的参数是否为空，不为空要释放原地址空间
+    if (automaton_states->states != NULL)
+    {
+        free(automaton_states->states);
+        automaton_states->states = NULL;
+        automaton_states->state_nums = 0;
+    }
+    if (action_table->actions != NULL)
+    {
+        free(action_table->actions);
+        action_table->actions = NULL;
+        action_table->action_nums = 0;
+        action_table->state_nums = 0;
+    }
+
+    // 前terminal_nums个是action表，后non_terminal_nums个是goto表, 最后一维是终止符号
+    int elem_nums = terminal_nums + non_terminal_nums + 1;
+    pAction action_buffer = (pAction)malloc(sizeof(Action) * elem_nums * 512);
+    memset(action_buffer, 0, sizeof(Action) * elem_nums * 512);
+    if(grammar.production_nums == 0)
+        return;
     State states[512];
     int state_nums = 0;
     PosProduction start_prod;
@@ -301,11 +381,19 @@ AutomatonStates items(Grammar grammar)
                     {
                         if (sameState(temp, states[k]))
                         {
+                            // state[i]经过j转移得到了temp
+                            int index = i * elem_nums + j + terminal_nums;
+                            action_buffer[index].value = k;
+                            if (j < 0)
+                                action_buffer[index].action_type = SHIFT_STATE;
+                            else
+                                action_buffer[index].action_type = GOTO_STATE;
                             break;
                         }
                     }
-                    if (k == state_nums)
+                    if (k == state_nums)    // 产生了一个新状态, state[i]经过j转移得到temp
                     {
+                        // 此时新增的state在最后一轮for循环中一定会被处理，因此此处不用填写action表
                         states[state_nums++] = temp;
                         if (state_nums >= 512)
                         {
@@ -319,13 +407,75 @@ AutomatonStates items(Grammar grammar)
         if (state_nums == last_state_nums)
             break;
     }
-    automaton_states.state_nums = state_nums;
-    automaton_states.states = (pState)malloc(sizeof(State) * state_nums);
-    memcpy(automaton_states.states, states, sizeof(State) * state_nums);
-    return automaton_states;
+
+    // 填写要规约的ACTION表内容以及接受状态，并将空处置为error。
+    for (int i = 0; i < state_nums; ++i)
+    {
+        for (int j = 0; j < states[i].pos_production_nums; ++j)
+        {
+            // 如果点在最后，就要规约
+            if (states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums)
+            {
+                // 如果是开始符号，就接受
+                if (states[i].pos_productions[j].production.production == 0)
+                {
+                    action_buffer[i * elem_nums + elem_nums - 1].action_type = ACCEPT_STATE;
+                    action_buffer[i * elem_nums + elem_nums].value = 0;
+                }
+                else
+                {
+                    // TODO: 加入FIRST集合和FOLLOW集合的判断，进化成SLR(0)文法
+                    for (int k = 0; k < elem_nums - 1; ++k)
+                    {
+                        if(action_buffer[i * elem_nums + k].action_type != 0)
+                            printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
+                        action_buffer[i * elem_nums + k].action_type = REDUCE_STATE;
+                        action_buffer[i * elem_nums + k].value = states[i].pos_productions[j].production.id;
+                    }
+                }
+            }
+        }
+        // 将空处置为error
+        for (int j = 0; j < elem_nums; ++j)
+        {
+            if (action_buffer[i * elem_nums + j].action_type == 0)
+                action_buffer[i * elem_nums + j].action_type = ERROR_STATE;
+        }
+    }
+
+    automaton_states->state_nums = state_nums;
+    automaton_states->states = (pState)malloc(sizeof(State) * state_nums);
+    memcpy(automaton_states->states, states, sizeof(State) * state_nums);
+    action_table->state_nums = state_nums;
+    action_table->action_nums = state_nums * elem_nums;
+    action_table->actions = (pAction)malloc(sizeof(Action) * action_table->action_nums);
+    memcpy(action_table->actions, action_buffer, sizeof(Action) * action_table->action_nums);
+    free(action_buffer);
 }
 
-// 根据自动机状态们生成action表和goto表
+void printActionTable(ActionTable action_table)
+{
+    char temp[MAX_TOKEN_LEN];
+    int elem_nums = action_table.action_nums / action_table.state_nums;
+    printf("=====Action Table=====\n");
+    for (int i = 0; i <action_table.state_nums; ++i)
+    {
+        printf("State %3d: ", i);
+        for (int j = 0; j < elem_nums; ++j)
+        {
+            if (action_table.actions[i*elem_nums + j].action_type == ERROR_STATE)
+                printf("ERR  ");
+            else if (action_table.actions[i*elem_nums + j].action_type == ACCEPT_STATE)
+                printf("ACC  ");
+            else if (action_table.actions[i*elem_nums + j].action_type == REDUCE_STATE)
+                printf("R%3d ", action_table.actions[i*elem_nums + j].value);
+            else
+                printf("T%3d ", action_table.actions[i*elem_nums + j].value);
+        }
+        printf("\n");
+    }
+
+}
 
 // 根据action表和goto表，分析输入串。
 
@@ -340,42 +490,11 @@ int main(int argc, char *argv[])
         exit(-1);
     }
     Grammar grammar = processGrammar(fp);
-    char temp[100];
-    printf("=====Grammar=====\n");
-    for (int i = 0; i < grammar.production_nums; ++i)
-    {
-        get_lex(grammar.productions[i].production, temp);
-        printf("%s -> ", temp);
-        for (int j = 0; j < grammar.productions[i].gen_nums; ++j)
-        {
-            get_lex(grammar.productions[i].generative[j], temp);
-            printf("%s ", temp);
-        }
-        printf("\n");
-    }
-
-    AutomatonStates automaton_states = items(grammar);
-    fflush(stdout);
-    printf("=====Automaton state=====\n");
-    printf("Automaton state nums: %d\n", automaton_states.state_nums);
-    for (int i = 0; i < automaton_states.state_nums; ++i)
-    {
-        printf("State %d:\n", i);
-        for (int j = 0; j < automaton_states.states[i].pos_production_nums; ++j)
-        {
-            get_lex(automaton_states.states[i].pos_productions[j].production.production, temp);
-            printf("%s -> ", temp);
-            for (int k = 0; k < automaton_states.states[i].pos_productions[j].production.gen_nums; ++k)
-            {
-                if (k == automaton_states.states[i].pos_productions[j].dot_pos)
-                    printf(". ");
-                get_lex(automaton_states.states[i].pos_productions[j].production.generative[k], temp);
-                printf("%s ", temp);
-            }
-            if (automaton_states.states[i].pos_productions[j].production.gen_nums == automaton_states.states[i].pos_productions[j].dot_pos)
-                    printf(".");
-            printf("\n");
-            fflush(stdout);
-        }
-    }
+    printGrammar(grammar);
+    AutomatonStates automaton_states = {NULL, 0};
+    ActionTable action_table = {NULL, 0, 0};
+    getActionTable(grammar, &automaton_states, &action_table);
+    printStates(automaton_states);
+    printActionTable(action_table);
+    return 0;
 }
