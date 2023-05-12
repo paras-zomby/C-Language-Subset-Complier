@@ -20,9 +20,10 @@ typedef struct {
 typedef struct {
     pProduction productions;
     int production_nums;
-    pFIRST firsts;
-    pFOLLOW follows;
-    int item_nums;
+    int item_nums;      // first集合数目，也是语法符号表中符号的数目
+    pFIRST firsts;      // first集合，注意因为first集合包含所有符号，所以索引向右平移了terminal_nums位
+    pFOLLOW follows;    // 但是follow集合只包含非终结符，所以索引不需要平移
+    int follow_nums;    // follow集合数目，也是非终极符号表的符号数目
 } Grammar, *pGrammar;
 
 Token terminal_table[MAX_TERMINAL_NUM + 1] = {0};
@@ -145,8 +146,34 @@ void processGrammar(FILE *fp, pGrammar grammar)
     get_id("$");    // 将$加入终级符表，$位于最后一个终极符
     grammar->production_nums = now_production_num;
     grammar->productions = (pProduction) malloc(sizeof(Production) * now_production_num);
-    grammar->item_nums = terminal_nums + non_terminal_nums;  // 不用考虑终结符，所以不用加1。
+    grammar->item_nums = terminal_nums + non_terminal_nums;
+    grammar->follow_nums = non_terminal_nums;
     memcpy(grammar->productions, production_buffer, sizeof(Production) * now_production_num);
+}
+
+// 用于合并两个集合，结果放入a中。b中的epsilon不会加入a中。返回值是新增的元素个数
+// epsilon_pos用于记录b中epsilon的位置。传入NULL表示不记录
+int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos)
+{
+    int pos = *a_size;
+    int epsilon_pos_ = -1;
+    for (int i = 0; i < b_size; ++i)
+    {
+        if (b[i] == 0)  // b[i]是epsilon，不能加入follow集合。返回值为epsilon的位置
+        { epsilon_pos_ = i; continue; }
+
+        int j;
+        for  (j = 0; j < *a_size; ++j)
+            if (a[j] == b[i])
+                break;
+        if (j == *a_size)
+            a[pos++] = b[i];
+    }
+    int ret = pos - *a_size;
+    *a_size = pos;
+    if (epsilon_pos != NULL)
+        *epsilon_pos = epsilon_pos_;
+    return ret;
 }
 
 void calcFIRSTSet(pGrammar grammar)
@@ -156,7 +183,70 @@ void calcFIRSTSet(pGrammar grammar)
 
 void calcFOLLOWSet(pGrammar grammar)
 {
+    grammar->follows = (pFIRST) malloc(sizeof(FIRST) * grammar->follow_nums);
+    for (int i = 0; i < grammar->follow_nums; ++i)
+    {
+        grammar->follows[i].items = (int*) malloc(sizeof(int) * grammar->item_nums);
+        grammar->follows[i].item_nums = 0;
+    }
+    grammar->follows[0].items[0] = -terminal_nums; // 起始符号的follow集合中加入$
+    grammar->follows[0].item_nums = 1;
+    int changed = 1;    // 记录每次循环follow集合中新增元素的个数
+    while (changed != 0) // 当follow集合不再变化时退出
+    {
+        changed = 0;
+        // 对于每一条产生式遍历
+        for (int i = 0; i < grammar->production_nums; ++i)
+        {
+            // 对于每一个产生式右侧的符号遍历
+            for (int j = 0; j < grammar->productions[i].gen_nums; ++j)
+            {
+                int ch = grammar->productions[i].generative[j];
+                if (ch <= 0) // 终极符号没有follow集合，开始符号follow集合固定为$
+                    continue;
 
+                int k; // 对于每一个产生式右侧的符号的所有后继符号遍历
+                for (k = j + 1; k < grammar->productions[i].gen_nums; ++k)
+                {
+                    int next = grammar->productions[i].generative[k];
+                    if (next < 0)  // 下一个符号是终极符号，停止遍历并将其加入到follow集合中
+                    {
+                        changed += mergeSet(grammar->follows[ch].items,
+                                            &grammar->follows[ch].item_nums,
+                                            &next, 1, NULL);
+                        break;
+                    }
+                    else
+                    {
+                        // 下一个符号是非终极符号，将其first集合加入到follow集合中
+                        int epsilon_pos;
+                        changed += mergeSet(grammar->follows[ch].items,
+                                             &grammar->follows[ch].item_nums,
+                                             grammar->firsts[next + terminal_nums].items,
+                                             grammar->firsts[next + terminal_nums].item_nums,
+                                             &epsilon_pos);
+                        // 后继符号的first集合中没有epsilon，停止遍历
+                        if (-1 == epsilon_pos)
+                            break;
+                    }
+                }
+                // j已经是最后一个符号，或者j后面的符号都是非终极符号并且FIRST集合均包含epsilon
+                if (j + 1 == grammar->productions[i].gen_nums || k == grammar->productions[i].gen_nums)
+                {
+                    // 把产生式的左侧符号的follow集合加入到j的follow集合中
+                    // 如果产生式的左侧符号和右侧符号相同，不需要加入
+                    if (grammar->productions[i].production != ch)
+                        changed += mergeSet(grammar->follows[ch].items, &grammar->follows[ch].item_nums,
+                                             grammar->follows[grammar->productions[i].production].items,
+                                             grammar->follows[grammar->productions[i].production].item_nums,
+                                             NULL);
+                }
+            }
+        }
+    }
+    for (int i = 0; i < grammar->follow_nums; ++i)
+        grammar->follows[i].items = (int*) realloc(grammar->follows[i].items,
+                                                   sizeof(int) * grammar->follows[i].item_nums);
 }
 
 Grammar generateGrammar(FILE* fp)
@@ -183,9 +273,31 @@ void printGrammar(const Grammar grammar)
         }
         printf("\n");
     }
+    printf("FIRST Sets: \n");
+    for (int i = 0; i < grammar.item_nums; ++i)
+    {
+        get_lex(i - terminal_nums, temp);
+        printf("%s: ", temp);
+        for (int j = 0; j < grammar.firsts[i].item_nums; ++j)
+        {
+            get_lex(grammar.firsts[i].items[j], temp);
+            printf("%s ", temp);
+        }
+        printf("\n");
+    }
+    printf("FOLLOW Sets: \n");
+    for (int i = 0; i < grammar.item_nums; ++i)
+    {
+        get_lex(i - terminal_nums, temp);
+        printf("%s: ", temp);
+        for (int j = 0; j < grammar.follows[i].item_nums; ++j)
+        {
+            get_lex(grammar.follows[i].items[j], temp);
+            printf("%s ", temp);
+        }
+        printf("\n");
+    }
 }
-
-// 生成first集合和follow集合(?)
 
 // 根据读入的语法状态数目，生成自动机状态们（即规范项集族，I1 I2 I3 I4...）
 typedef struct {
