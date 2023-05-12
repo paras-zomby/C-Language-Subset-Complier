@@ -38,7 +38,7 @@ int get_id(const char *lex)
         strcmp(lex, "id") == 0 || strcmp(lex, "digits") == 0 || strcmp(lex, "$") == 0)
     {
         // 终结符占用<0的部分，没有0，所以从1开始
-        // 有意义的下标区间[1, terminal_nums]
+        // 有意义的下标区间[1, terminal_nums]，并且最后一个是$，占用[terminal_nums]位置
         for (int i = 1; i <= terminal_nums; ++i)
         {
             if (strcmp(terminal_table[i].str, lex) == 0)
@@ -431,7 +431,7 @@ typedef struct {
 } Action, *pAction;
 
 typedef struct {
-    pAction actions;    // 前terminal_nums个是action表，后non_terminal_nums个是goto表, 最后一维是终止符号
+    pAction actions;    // 前terminal_nums个是action表（第一维是终止符），后non_terminal_nums个是goto表
     int action_nums;    // 元素总数
     int state_nums;     // 状态数，也是表格的行数
 } ActionTable, *pActionTable;
