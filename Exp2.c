@@ -13,8 +13,16 @@ typedef struct {
 } Production, *pProduction;
 
 typedef struct {
+    int *items;
+    int item_nums;
+}FIRST, FOLLOW, *pFIRST, *pFOLLOW;
+
+typedef struct {
     pProduction productions;
     int production_nums;
+    pFIRST firsts;
+    pFOLLOW follows;
+    int item_nums;
 } Grammar, *pGrammar;
 
 Token terminal_table[MAX_TERMINAL_NUM + 1] = {0};
@@ -65,7 +73,7 @@ void get_lex(int id, char temp[MAX_TOKEN_LEN])
         strcpy(temp, "START");
 }
 
-Grammar processGrammar(FILE *fp)
+void processGrammar(FILE *fp, pGrammar grammar)
 {
     Production start_production = {.id = 0, .production = 0, .gen_nums = 1, .generative = {1}};
     Production production_buffer[1024];
@@ -75,10 +83,11 @@ Grammar processGrammar(FILE *fp)
     char token[100];
     int state = 0; //表示识别状态，0未识别符号; >0正在识别符号
     int prod = 1; //正在识别的是左侧还是右侧
+    int read_production = 0; //当前是否读入了产生式
     while (1)
     {
         char ch = (char) fgetc(fp);
-        if (feof(fp))  // TODO: 错误处理
+        if (feof(fp))
             break;
         if (ch == '#')
         {
@@ -99,6 +108,7 @@ Grammar processGrammar(FILE *fp)
                 if (prod)
                 {
                     production_buffer[now_production_num].production = get_id(token);
+                    read_production = 1;
                 }
                 else
                 {
@@ -108,7 +118,12 @@ Grammar processGrammar(FILE *fp)
             }
             if (ch == '\n')
             {
-                if (prod == 0 && production_buffer[now_production_num].gen_nums > 0)
+                if (prod == 1 && read_production == 1)
+                {
+                    print_error("Not a Correct Grammar, please recheck your grammar file, exit");
+                    exit(-1);
+                }
+                else if (prod == 0)
                 {
                     production_buffer[now_production_num].id = now_production_num;
                     ++now_production_num;
@@ -119,11 +134,7 @@ Grammar processGrammar(FILE *fp)
                     }
                     production_buffer[now_production_num].gen_nums = 0;
                     prod = 1;
-                }
-                else if (prod == 0 && production_buffer[now_production_num].gen_nums == 0)
-                {
-                    print_error("Not a Correct Grammar, please recheck your grammar file, exit");
-                    exit(-1);
+                    read_production = 0;
                 }
             }
         }
@@ -131,10 +142,27 @@ Grammar processGrammar(FILE *fp)
             token[state++] = ch;
     }
     fclose(fp);
+    grammar->production_nums = now_production_num;
+    grammar->productions = (pProduction) malloc(sizeof(Production) * now_production_num);
+    memcpy(grammar->productions, production_buffer, sizeof(Production) * now_production_num);
+}
+
+void calcFIRSTSet(pGrammar grammar)
+{
+
+}
+
+void calcFOLLOWSet(pGrammar grammar)
+{
+
+}
+
+Grammar generateGrammar(FILE* fp)
+{
     Grammar grammar;
-    grammar.production_nums = now_production_num;
-    grammar.productions = (pProduction) malloc(sizeof(Production) * now_production_num);
-    memcpy(grammar.productions, production_buffer, sizeof(Production) * now_production_num);
+    processGrammar(fp, &grammar);
+    calcFIRSTSet(&grammar);
+    calcFOLLOWSet(&grammar);
     return grammar;
 }
 
@@ -158,7 +186,6 @@ void printGrammar(Grammar grammar)
 // 生成first集合和follow集合(?)
 
 // 根据读入的语法状态数目，生成自动机状态们（即规范项集族，I1 I2 I3 I4...）
-
 typedef struct {
     Production production;
     int dot_pos;
@@ -373,11 +400,6 @@ void printState(State state)
         printf("%s ", temp);
     }
     printf("\n");
-    for (int i = 0; i < state.non_core_production_nums; ++i)
-    {
-        get_lex(state.non_core_productions[i], temp);
-        printf("%s ", temp);
-    }
 }
 
 void printStates(AutomatonStates automaton_states)
@@ -568,7 +590,7 @@ int main(int argc, char *argv[])
         print_error("File is not opened, exit.");
         exit(-1);
     }
-    Grammar grammar = processGrammar(fp);
+    Grammar grammar = generateGrammar(fp);
     printGrammar(grammar);
     AutomatonStates automaton_states = {NULL, 0};
     ActionTable action_table = {NULL, 0, 0};
