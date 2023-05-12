@@ -60,7 +60,7 @@ int get_id(const char *lex)
 
 }
 // id -> lex
-void get_lex(int id, char temp[MAX_TOKEN_LEN])
+void get_lex(const int id, char temp[MAX_TOKEN_LEN])
 {
     if (id > 0)
     {
@@ -142,8 +142,10 @@ void processGrammar(FILE *fp, pGrammar grammar)
             token[state++] = ch;
     }
     fclose(fp);
+    get_id("$");    // 将$加入终级符表，$位于最后一个终极符
     grammar->production_nums = now_production_num;
     grammar->productions = (pProduction) malloc(sizeof(Production) * now_production_num);
+    grammar->item_nums = terminal_nums + non_terminal_nums;  // 不用考虑终结符，所以不用加1。
     memcpy(grammar->productions, production_buffer, sizeof(Production) * now_production_num);
 }
 
@@ -166,7 +168,7 @@ Grammar generateGrammar(FILE* fp)
     return grammar;
 }
 
-void printGrammar(Grammar grammar)
+void printGrammar(const Grammar grammar)
 {
     char temp[MAX_TOKEN_LEN];
     printf("=====Grammar=====\n");
@@ -333,8 +335,9 @@ State closure(PosProduction pos_production, Grammar grammar)
             break;
     }
     State ret;
+    // 只有第一条产生式是核心产生式
     ret.pos_productions = (pPosProduction)malloc(sizeof(PosProduction));
-    memcpy(ret.pos_productions, prods, sizeof(PosProduction));
+    *ret.pos_productions = pos_production;
     ret.pos_production_nums = 1;
     if (non_core_prod_nums > 0)
     {
@@ -417,11 +420,12 @@ void printStates(AutomatonStates automaton_states)
 // 根据自动机状态们生成action表和goto表
 typedef struct {
     enum{
-        GOTO_STATE = 1,     // 用GOTO表转移
-        SHIFT_STATE = 2,    // 直接ACTION表转移
-        REDUCE_STATE = 3,   // 使用某条语法规则规约
-        ACCEPT_STATE = 4,   // 接受状态
-        ERROR_STATE = 5     // 错误状态
+        EMPTY_STATE = 0,    // 空状态
+        GOTO_STATE,         // 用GOTO表转移
+        SHIFT_STATE,        // 直接ACTION表转移
+        REDUCE_STATE,       // 使用某条语法规则规约
+        ACCEPT_STATE,       // 接受状态
+        ERROR_STATE         // 错误状态
     } action_type;
     int value;
 } Action, *pAction;
@@ -449,10 +453,9 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
         action_table->state_nums = 0;
     }
 
-    // 前terminal_nums个是action表，后non_terminal_nums个是goto表, 最后一维是终止符号
-    int elem_nums = terminal_nums + non_terminal_nums + 1;
-    pAction action_buffer = (pAction)malloc(sizeof(Action) * elem_nums * 512);
-    memset(action_buffer, 0, sizeof(Action) * elem_nums * 512);
+    // 前terminal_nums个是action表，后non_terminal_nums个是goto表。
+    pAction action_buffer = (pAction)malloc(sizeof(Action) * grammar.item_nums * 512);
+    memset(action_buffer, 0, sizeof(Action) * grammar.item_nums * 512);
     if(grammar.production_nums == 0)
         return;
     State states[512];
@@ -477,7 +480,7 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                         if (sameState(temp, states[k]))
                         {
                             // state[i]经过j转移得到了temp
-                            int index = i * elem_nums + j + terminal_nums;
+                            int index = i * grammar.item_nums + j + terminal_nums;
                             action_buffer[index].value = k;
                             if (j < 0)
                                 action_buffer[index].action_type = SHIFT_STATE;
@@ -490,11 +493,6 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                     {
                         // 此时新增的state在最后一轮for循环中一定会被处理，因此此处不用填写action表
                         states[state_nums++] = temp;
-
-//                        char t[MAX_TOKEN_LEN];
-//                        get_lex(j, t);
-//                        printf("New state [%d], from state [%d] read character [%s]\n", state_nums - 1, i, t);
-//                        printState(temp);
 
                         if (state_nums >= 100)
                         {
@@ -520,27 +518,39 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                 // 如果是开始符号，就接受
                 if (states[i].pos_productions[j].production.production == 0)
                 {
-                    action_buffer[i * elem_nums + elem_nums - 1].action_type = ACCEPT_STATE;
-                    action_buffer[i * elem_nums + elem_nums].value = 0;
+                    action_buffer[i * grammar.item_nums].action_type = ACCEPT_STATE;
                 }
                 else
                 {
                     // TODO: 加入FIRST集合和FOLLOW集合的判断，进化成SLR(0)文法
-                    for (int k = 0; k < elem_nums - 1; ++k)
+                    for (int k = 0; k < grammar.item_nums; ++k)
                     {
-                        if(action_buffer[i * elem_nums + k].action_type != 0)
+                        if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
                             printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
-                        action_buffer[i * elem_nums + k].action_type = REDUCE_STATE;
-                        action_buffer[i * elem_nums + k].value = states[i].pos_productions[j].production.id;
+                        action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
+                        action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
+//                        // 如果符号k在状态i的产生式j的左侧元素的FOLLOW集合中，就要规约
+//                        const FOLLOW follow = grammar.follows[states[i].pos_productions[j].production.production];
+//                        for (int l = 0; l < follow.item_nums; ++l)
+//                        {
+//                            // 元素k在FOLLOW集合中，注意k从0开始，要平移到负数表示实际符号id
+//                            if (follow.items[l] == k - terminal_nums)
+//                            {
+//                                if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
+//                                    printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
+//                                action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
+//                                action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
+//                            }
+//                        }
                     }
                 }
             }
         }
         // 将空处置为error
-        for (int j = 0; j < elem_nums; ++j)
+        for (int j = 0; j < grammar.item_nums; ++j)
         {
-            if (action_buffer[i * elem_nums + j].action_type == 0)
-                action_buffer[i * elem_nums + j].action_type = ERROR_STATE;
+            if (action_buffer[i * grammar.item_nums + j].action_type == EMPTY_STATE)
+                action_buffer[i * grammar.item_nums + j].action_type = ERROR_STATE;
         }
     }
 
@@ -548,7 +558,7 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
     automaton_states->states = (pState)malloc(sizeof(State) * state_nums);
     memcpy(automaton_states->states, states, sizeof(State) * state_nums);
     action_table->state_nums = state_nums;
-    action_table->action_nums = state_nums * elem_nums;
+    action_table->action_nums = state_nums * grammar.item_nums;
     action_table->actions = (pAction)malloc(sizeof(Action) * action_table->action_nums);
     memcpy(action_table->actions, action_buffer, sizeof(Action) * action_table->action_nums);
     free(action_buffer);
