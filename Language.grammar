@@ -22,8 +22,8 @@ E @ E + T
 E @ E - T
 E @ T
 T @ F
-T @ T1 * F
-T @ T1 / F
+T @ T * F
+T @ T / F
 F @ ( E )
 F @ id
 F @ digits
