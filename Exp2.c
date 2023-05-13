@@ -178,7 +178,103 @@ int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos)
 
 void calcFIRSTSet(pGrammar grammar)
 {
+    int total_num = terminal_nums + non_terminal_nums;
+    grammar->firsts = (pFIRST) malloc(sizeof(FIRST) * total_num);
+    grammar->item_nums = total_num;
+    for (int i=-terminal_nums; i<non_terminal_nums;i++)
+    {
+        grammar->firsts[i + terminal_nums].item_nums = 0;
+    }
+    for (int i = -terminal_nums; i < 0; ++i) {
+        grammar->firsts[i + terminal_nums].items = (int*) malloc(sizeof(int) * 1);
+        grammar->firsts[i + terminal_nums].item_nums = 1;
+        grammar->firsts[i + terminal_nums].items[0] = i;
+    }
 
+    while(1){
+        int is_stable = 1;
+        for (int i = 0; i < grammar->production_nums; i++) {
+            int item[100], val_pos = 0;
+            memset(item, 0, sizeof(int) * 100);
+
+            // 空串处理
+            if(grammar->productions[i].gen_nums == 0)
+            {
+                grammar->productions[i].gen_nums += 1;
+                grammar->productions[i].generative[0] = 10;
+            }
+
+            int k = 0;
+            for (; k < grammar->productions[i].gen_nums; k++) {
+                val_pos=0;
+                int xk = grammar->productions[i].generative[k];
+                int alpha = grammar->productions[i].production;
+                int is_null = 0;
+                if (xk == 10)
+                {
+                    item[0] = 10;
+                    val_pos = 1;
+                    int pos = grammar->firsts[alpha + terminal_nums].item_nums;
+                    if (pos != 0) {
+                        memcpy(item + val_pos, grammar->firsts[alpha + terminal_nums].items, pos * sizeof(int));
+                        free(grammar->firsts[alpha + terminal_nums].items);
+                    }
+                    grammar->firsts[alpha + terminal_nums].items = (int *) malloc(sizeof(int) * (val_pos + pos));
+                    memcpy(grammar->firsts[alpha + terminal_nums].items, item, (val_pos + pos) * sizeof(int));
+                    grammar->firsts[alpha + terminal_nums].item_nums += val_pos;
+                    break;
+                }
+                for (int index_xk = 0; index_xk < grammar->firsts[xk + terminal_nums].item_nums; index_xk++) {
+                    int repeat = 0;
+                    if (grammar->firsts[xk + terminal_nums].items[index_xk] == 10) {
+                        is_null = 1;
+                        continue;
+                    }
+                    for (int index_alpha = 0;
+                         index_alpha < grammar->firsts[alpha + terminal_nums].item_nums; index_alpha++) {
+                        if (grammar->firsts[alpha + terminal_nums].items[index_alpha] ==
+                            grammar->firsts[xk + terminal_nums].items[index_xk]) {
+                            repeat = 1;
+                            break;
+                        }
+                    }
+                    if (repeat == 0) {
+                        item[val_pos] = grammar->firsts[xk + terminal_nums].items[index_xk];
+                        val_pos += 1;
+                        is_stable = 0;
+                    }
+                }
+
+                // 处理xk的first集中有空串的情况
+                if (is_null==1 && k == grammar->productions[i].gen_nums - 1)
+                {
+                    item[val_pos] = 10;
+                    val_pos += 1;
+                    is_stable = 0;
+                }
+                // 加入first集新元素
+
+                int pos = grammar->firsts[alpha + terminal_nums].item_nums;
+                if (pos != 0) {
+                    memcpy(item + val_pos, grammar->firsts[alpha + terminal_nums].items, pos * sizeof(int));
+                    free(grammar->firsts[alpha + terminal_nums].items);
+                }
+                grammar->firsts[alpha + terminal_nums].items = (int *) malloc(sizeof(int) * (val_pos + pos));
+                memcpy(grammar->firsts[alpha + terminal_nums].items, item, (val_pos + pos) * sizeof(int));
+                grammar->firsts[alpha + terminal_nums].item_nums += val_pos;
+                char temp[100];
+                get_lex(alpha, temp);
+                printf("FIRST ITEM [%s]: ", temp);
+                for (int j = 0; j < val_pos + pos; ++j) {
+                    get_lex(item[j], temp);
+                    printf("%s ", temp);
+                }
+                printf("\n");
+                if (is_null==0){break;}
+            }
+        }
+        if (is_stable) {break;}
+    }
 }
 
 void calcFOLLOWSet(pGrammar grammar)
@@ -714,6 +810,7 @@ int main(int argc, char *argv[])
     }
     Grammar grammar = generateGrammar(fp);
     printGrammar(grammar);
+    exit(0);
     AutomatonStates automaton_states = {NULL, 0};
     ActionTable action_table = {NULL, 0, 0};
     getActionTable(grammar, &automaton_states, &action_table);
