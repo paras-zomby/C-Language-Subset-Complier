@@ -133,9 +133,9 @@ void processGrammar(FILE *fp, pGrammar grammar)
                         print_error("Too many productions, exit.");
                         exit(-1);
                     }
-                    production_buffer[now_production_num].gen_nums = 0;
                     prod = 1;
                     read_production = 0;
+                    production_buffer[now_production_num].gen_nums = 0;
                 }
             }
         }
@@ -748,8 +748,13 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                             // 元素k在FOLLOW集合中，注意k从0开始，要平移到负数表示实际符号id
                             if (follow.items[l] == k - terminal_nums)
                             {
+                                // 如果出现了冲突， 显示详细冲突信息并且用新状态覆盖就状态（优先规约）
                                 if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
-                                    printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
+                                    printf("Warning: conflict in state %d, symbol %d."
+                                           " OLD state: [%d, %d], NEW state: [%d, %d].\n", i, k - terminal_nums,
+                                           action_buffer[i * grammar.item_nums + k].action_type,
+                                           action_buffer[i * grammar.item_nums + k].value,
+                                           REDUCE_STATE, states[i].pos_productions[j].production.id);
                                 action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
                                 action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
                             }
@@ -781,6 +786,15 @@ void printActionTable(ActionTable action_table)
     char temp[MAX_TOKEN_LEN];
     int elem_nums = action_table.action_nums / action_table.state_nums;
     printf("=====[Action Table]=====\n");
+    printf("St \\ elem: ");
+    for (int i = -terminal_nums; i < non_terminal_nums; ++i)
+    {
+        get_lex(i, temp);
+        temp[3] = 0;
+        printf("%3s  ", temp);
+    }
+    printf("\n");
+
     for (int i = 0; i <action_table.state_nums; ++i)
     {
         printf("State %3d: ", i);
