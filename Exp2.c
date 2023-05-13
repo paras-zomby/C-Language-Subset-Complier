@@ -20,9 +20,10 @@ typedef struct {
 typedef struct {
     pProduction productions;
     int production_nums;
-    pFIRST firsts;
-    pFOLLOW follows;
-    int item_nums;
+    int item_nums;      // first集合数目，也是语法符号表中符号的数目
+    pFIRST firsts;      // first集合，注意因为first集合包含所有符号，所以索引向右平移了terminal_nums位
+    pFOLLOW follows;    // 但是follow集合只包含非终结符，所以索引不需要平移
+    int follow_nums;    // follow集合数目，也是非终极符号表的符号数目
 } Grammar, *pGrammar;
 
 Token terminal_table[MAX_TERMINAL_NUM + 1] = {0};
@@ -38,7 +39,7 @@ int get_id(const char *lex)
         strcmp(lex, "id") == 0 || strcmp(lex, "digits") == 0 || strcmp(lex, "$") == 0)
     {
         // 终结符占用<0的部分，没有0，所以从1开始
-        // 有意义的下标区间[1, terminal_nums]
+        // 有意义的下标区间[1, terminal_nums]，并且最后一个是$，占用[terminal_nums]位置
         for (int i = 1; i <= terminal_nums; ++i)
         {
             if (strcmp(terminal_table[i].str, lex) == 0)
@@ -60,7 +61,7 @@ int get_id(const char *lex)
 
 }
 // id -> lex
-void get_lex(int id, char temp[MAX_TOKEN_LEN])
+void get_lex(const int id, char temp[MAX_TOKEN_LEN])
 {
     if (id > 0)
     {
@@ -142,11 +143,38 @@ void processGrammar(FILE *fp, pGrammar grammar)
             token[state++] = ch;
     }
     fclose(fp);
+    get_id("$");    // 将$加入终级符表，$位于最后一个终极符
     grammar->production_nums = now_production_num;
     grammar->productions = (pProduction) malloc(sizeof(Production) * now_production_num);
+    grammar->item_nums = terminal_nums + non_terminal_nums;
+    grammar->follow_nums = non_terminal_nums;
     memcpy(grammar->productions, production_buffer, sizeof(Production) * now_production_num);
 }
 
+// 用于合并两个集合，结果放入a中。b中的epsilon不会加入a中。返回值是新增的元素个数
+// epsilon_pos用于记录b中epsilon的位置。传入NULL表示不记录
+int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos)
+{
+    int pos = *a_size;
+    int epsilon_pos_ = -1;
+    for (int i = 0; i < b_size; ++i)
+    {
+        if (b[i] == 0)  // b[i]是epsilon，不能加入follow集合。返回值为epsilon的位置
+        { epsilon_pos_ = i; continue; }
+
+        int j;
+        for  (j = 0; j < *a_size; ++j)
+            if (a[j] == b[i])
+                break;
+        if (j == *a_size)
+            a[pos++] = b[i];
+    }
+    int ret = pos - *a_size;
+    *a_size = pos;
+    if (epsilon_pos != NULL)
+        *epsilon_pos = epsilon_pos_;
+    return ret;
+}
 
 void calcFIRSTSet(pGrammar grammar)
 {
@@ -251,7 +279,70 @@ void calcFIRSTSet(pGrammar grammar)
 
 void calcFOLLOWSet(pGrammar grammar)
 {
+    grammar->follows = (pFIRST) malloc(sizeof(FIRST) * grammar->follow_nums);
+    for (int i = 0; i < grammar->follow_nums; ++i)
+    {
+        grammar->follows[i].items = (int*) malloc(sizeof(int) * grammar->item_nums);
+        grammar->follows[i].item_nums = 0;
+    }
+    grammar->follows[0].items[0] = -terminal_nums; // 起始符号的follow集合中加入$
+    grammar->follows[0].item_nums = 1;
+    int changed = 1;    // 记录每次循环follow集合中新增元素的个数
+    while (changed != 0) // 当follow集合不再变化时退出
+    {
+        changed = 0;
+        // 对于每一条产生式遍历
+        for (int i = 0; i < grammar->production_nums; ++i)
+        {
+            // 对于每一个产生式右侧的符号遍历
+            for (int j = 0; j < grammar->productions[i].gen_nums; ++j)
+            {
+                int ch = grammar->productions[i].generative[j];
+                if (ch <= 0) // 终极符号没有follow集合，开始符号follow集合固定为$
+                    continue;
 
+                int k; // 对于每一个产生式右侧的符号的所有后继符号遍历
+                for (k = j + 1; k < grammar->productions[i].gen_nums; ++k)
+                {
+                    int next = grammar->productions[i].generative[k];
+                    if (next < 0)  // 下一个符号是终极符号，停止遍历并将其加入到follow集合中
+                    {
+                        changed += mergeSet(grammar->follows[ch].items,
+                                            &grammar->follows[ch].item_nums,
+                                            &next, 1, NULL);
+                        break;
+                    }
+                    else
+                    {
+                        // 下一个符号是非终极符号，将其first集合加入到follow集合中
+                        int epsilon_pos;
+                        changed += mergeSet(grammar->follows[ch].items,
+                                             &grammar->follows[ch].item_nums,
+                                             grammar->firsts[next + terminal_nums].items,
+                                             grammar->firsts[next + terminal_nums].item_nums,
+                                             &epsilon_pos);
+                        // 后继符号的first集合中没有epsilon，停止遍历
+                        if (-1 == epsilon_pos)
+                            break;
+                    }
+                }
+                // j已经是最后一个符号，或者j后面的符号都是非终极符号并且FIRST集合均包含epsilon
+                if (j + 1 == grammar->productions[i].gen_nums || k == grammar->productions[i].gen_nums)
+                {
+                    // 把产生式的左侧符号的follow集合加入到j的follow集合中
+                    // 如果产生式的左侧符号和右侧符号相同，不需要加入
+                    if (grammar->productions[i].production != ch)
+                        changed += mergeSet(grammar->follows[ch].items, &grammar->follows[ch].item_nums,
+                                             grammar->follows[grammar->productions[i].production].items,
+                                             grammar->follows[grammar->productions[i].production].item_nums,
+                                             NULL);
+                }
+            }
+        }
+    }
+    for (int i = 0; i < grammar->follow_nums; ++i)
+        grammar->follows[i].items = (int*) realloc(grammar->follows[i].items,
+                                                   sizeof(int) * grammar->follows[i].item_nums);
 }
 
 Grammar generateGrammar(FILE* fp)
@@ -290,8 +381,19 @@ void printGrammar(const Grammar grammar)
         }
         printf("\n");
     }
+    printf("FOLLOW Sets: \n");
+    for (int i = 0; i < grammar.item_nums; ++i)
+    {
+        get_lex(i - terminal_nums, temp);
+        printf("%s: ", temp);
+        for (int j = 0; j < grammar.follows[i].item_nums; ++j)
+        {
+            get_lex(grammar.follows[i].items[j], temp);
+            printf("%s ", temp);
+        }
+        printf("\n");
+    }
 }
-// 生成first集合和follow集合(?)
 
 // 根据读入的语法状态数目，生成自动机状态们（即规范项集族，I1 I2 I3 I4...）
 typedef struct {
@@ -441,8 +543,9 @@ State closure(PosProduction pos_production, Grammar grammar)
             break;
     }
     State ret;
+    // 只有第一条产生式是核心产生式
     ret.pos_productions = (pPosProduction)malloc(sizeof(PosProduction));
-    memcpy(ret.pos_productions, prods, sizeof(PosProduction));
+    *ret.pos_productions = pos_production;
     ret.pos_production_nums = 1;
     if (non_core_prod_nums > 0)
     {
@@ -525,17 +628,18 @@ void printStates(AutomatonStates automaton_states)
 // 根据自动机状态们生成action表和goto表
 typedef struct {
     enum{
-        GOTO_STATE = 1,     // 用GOTO表转移
-        SHIFT_STATE = 2,    // 直接ACTION表转移
-        REDUCE_STATE = 3,   // 使用某条语法规则规约
-        ACCEPT_STATE = 4,   // 接受状态
-        ERROR_STATE = 5     // 错误状态
+        EMPTY_STATE = 0,    // 空状态
+        GOTO_STATE,         // 用GOTO表转移
+        SHIFT_STATE,        // 直接ACTION表转移
+        REDUCE_STATE,       // 使用某条语法规则规约
+        ACCEPT_STATE,       // 接受状态
+        ERROR_STATE         // 错误状态
     } action_type;
     int value;
 } Action, *pAction;
 
 typedef struct {
-    pAction actions;    // 前terminal_nums个是action表，后non_terminal_nums个是goto表, 最后一维是终止符号
+    pAction actions;    // 前terminal_nums个是action表（第一维是终止符），后non_terminal_nums个是goto表
     int action_nums;    // 元素总数
     int state_nums;     // 状态数，也是表格的行数
 } ActionTable, *pActionTable;
@@ -557,10 +661,9 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
         action_table->state_nums = 0;
     }
 
-    // 前terminal_nums个是action表，后non_terminal_nums个是goto表, 最后一维是终止符号
-    int elem_nums = terminal_nums + non_terminal_nums + 1;
-    pAction action_buffer = (pAction)malloc(sizeof(Action) * elem_nums * 512);
-    memset(action_buffer, 0, sizeof(Action) * elem_nums * 512);
+    // 前terminal_nums个是action表，后non_terminal_nums个是goto表。
+    pAction action_buffer = (pAction)malloc(sizeof(Action) * grammar.item_nums * 512);
+    memset(action_buffer, 0, sizeof(Action) * grammar.item_nums * 512);
     if(grammar.production_nums == 0)
         return;
     State states[512];
@@ -585,7 +688,7 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                         if (sameState(temp, states[k]))
                         {
                             // state[i]经过j转移得到了temp
-                            int index = i * elem_nums + j + terminal_nums;
+                            int index = i * grammar.item_nums + j + terminal_nums;
                             action_buffer[index].value = k;
                             if (j < 0)
                                 action_buffer[index].action_type = SHIFT_STATE;
@@ -598,11 +701,6 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                     {
                         // 此时新增的state在最后一轮for循环中一定会被处理，因此此处不用填写action表
                         states[state_nums++] = temp;
-
-//                        char t[MAX_TOKEN_LEN];
-//                        get_lex(j, t);
-//                        printf("New state [%d], from state [%d] read character [%s]\n", state_nums - 1, i, t);
-//                        printState(temp);
 
                         if (state_nums >= 100)
                         {
@@ -628,27 +726,39 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                 // 如果是开始符号，就接受
                 if (states[i].pos_productions[j].production.production == 0)
                 {
-                    action_buffer[i * elem_nums + elem_nums - 1].action_type = ACCEPT_STATE;
-                    action_buffer[i * elem_nums + elem_nums].value = 0;
+                    action_buffer[i * grammar.item_nums].action_type = ACCEPT_STATE;
                 }
                 else
                 {
                     // TODO: 加入FIRST集合和FOLLOW集合的判断，进化成SLR(0)文法
-                    for (int k = 0; k < elem_nums - 1; ++k)
+                    for (int k = 0; k < grammar.item_nums; ++k)
                     {
-                        if(action_buffer[i * elem_nums + k].action_type != 0)
+                        if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
                             printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
-                        action_buffer[i * elem_nums + k].action_type = REDUCE_STATE;
-                        action_buffer[i * elem_nums + k].value = states[i].pos_productions[j].production.id;
+                        action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
+                        action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
+//                        // 如果符号k在状态i的产生式j的左侧元素的FOLLOW集合中，就要规约
+//                        const FOLLOW follow = grammar.follows[states[i].pos_productions[j].production.production];
+//                        for (int l = 0; l < follow.item_nums; ++l)
+//                        {
+//                            // 元素k在FOLLOW集合中，注意k从0开始，要平移到负数表示实际符号id
+//                            if (follow.items[l] == k - terminal_nums)
+//                            {
+//                                if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
+//                                    printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
+//                                action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
+//                                action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
+//                            }
+//                        }
                     }
                 }
             }
         }
         // 将空处置为error
-        for (int j = 0; j < elem_nums; ++j)
+        for (int j = 0; j < grammar.item_nums; ++j)
         {
-            if (action_buffer[i * elem_nums + j].action_type == 0)
-                action_buffer[i * elem_nums + j].action_type = ERROR_STATE;
+            if (action_buffer[i * grammar.item_nums + j].action_type == EMPTY_STATE)
+                action_buffer[i * grammar.item_nums + j].action_type = ERROR_STATE;
         }
     }
 
@@ -656,7 +766,7 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
     automaton_states->states = (pState)malloc(sizeof(State) * state_nums);
     memcpy(automaton_states->states, states, sizeof(State) * state_nums);
     action_table->state_nums = state_nums;
-    action_table->action_nums = state_nums * elem_nums;
+    action_table->action_nums = state_nums * grammar.item_nums;
     action_table->actions = (pAction)malloc(sizeof(Action) * action_table->action_nums);
     memcpy(action_table->actions, action_buffer, sizeof(Action) * action_table->action_nums);
     free(action_buffer);
