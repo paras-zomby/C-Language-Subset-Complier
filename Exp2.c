@@ -153,14 +153,18 @@ void processGrammar(FILE *fp, pGrammar grammar)
 
 // 用于合并两个集合，结果放入a中。b中的epsilon不会加入a中。返回值是新增的元素个数
 // epsilon_pos用于记录b中epsilon的位置。传入NULL表示不记录
-int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos)
+// epsilon_val用于表示是否在first集中加入空串，follow集默认是0
+int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos, int epsilon_val)
 {
     int pos = *a_size;
     int epsilon_pos_ = -1;
     for (int i = 0; i < b_size; ++i)
     {
-        if (b[i] == 0)  // b[i]是epsilon，不能加入follow集合。返回值为epsilon的位置
-        { epsilon_pos_ = i; continue; }
+        if (b[i] == 0)  // b[i]是epsilon，不能加入first，follow集合。返回值为epsilon的位置
+        {
+            epsilon_pos_ = i;
+            if (epsilon_val==0) {continue;}
+        }
 
         int j;
         for  (j = 0; j < *a_size; ++j)
@@ -179,104 +183,70 @@ int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos)
 void calcFIRSTSet(pGrammar grammar)
 {
     grammar->firsts = (pFIRST) malloc(sizeof(FIRST) * grammar->item_nums);
-    for (int i=-terminal_nums; i<non_terminal_nums;i++)
+    // 初始化非终极符的first集
+    for (int i=0; i<non_terminal_nums;i++)
     {
+        grammar->firsts[i + terminal_nums].items = malloc(sizeof(int) * terminal_nums);
         grammar->firsts[i + terminal_nums].item_nums = 0;
     }
-    for (int i = -terminal_nums; i < 0; ++i) {
+    // 初始化终极符的first集（其本身）
+    for (int i = -terminal_nums; i < 0; ++i)
+    {
         grammar->firsts[i + terminal_nums].items = (int*) malloc(sizeof(int) * 1);
         grammar->firsts[i + terminal_nums].item_nums = 1;
         grammar->firsts[i + terminal_nums].items[0] = i;
     }
-
+    // 循环求first集直到不再变化
     while(1){
-        int is_stable = 1;
+        int changed = 0;
         for (int i = 0; i < grammar->production_nums; i++) {
-            int item[100], val_pos = 0;
+            // 产生式左部
+            int alpha = grammar->productions[i].production;
 
-            // 空串处理
+            // 产生式为空处理
             if(grammar->productions[i].gen_nums == 0)
             {
-                grammar->productions[i].gen_nums += 1;
-                grammar->productions[i].generative[0] = 0;
+                int epsilon_set = 0;
+                changed += mergeSet(grammar->firsts[alpha + terminal_nums].items,
+                         &grammar->firsts[alpha + terminal_nums].item_nums,
+                         &epsilon_set, 1, NULL, 1);
+                continue;
             }
 
+            // 产生式右部不为空
             int k = 0;
-            for (; k < grammar->productions[i].gen_nums; k++) {
-                val_pos=0;
+            for (; k < grammar->productions[i].gen_nums; k++)
+            {
                 int xk = grammar->productions[i].generative[k];
-                int alpha = grammar->productions[i].production;
-                int is_null = 0;
-                // 处理空串
-                if (xk == 0)
-                {
-                    item[0] = 0;
-                    val_pos = 1;
-                    int pos = grammar->firsts[alpha + terminal_nums].item_nums;
-                    int have_epsilon = 0;
-                    if (pos != 0)
-                    {
-                        for (int temp = 0; i<pos; i++)
-                        {
-                            if (grammar->firsts[alpha + terminal_nums].items[temp] == 0)
-                            {
-                                have_epsilon = 1;
-                            }
-                        }
-                        if(have_epsilon==0){
-                        memcpy(item + val_pos, grammar->firsts[alpha + terminal_nums].items, pos * sizeof(int));
-                        free(grammar->firsts[alpha + terminal_nums].items);}
-                    }
-                    if (have_epsilon==0)
-                    {
-                        grammar->firsts[alpha + terminal_nums].items = (int *) malloc(sizeof(int) * (val_pos + pos));
-                        memcpy(grammar->firsts[alpha + terminal_nums].items, item, (val_pos + pos) * sizeof(int));
-                        grammar->firsts[alpha + terminal_nums].item_nums += val_pos;
-                    }
-                    break;
-                }
-                for (int index_xk = 0; index_xk < grammar->firsts[xk + terminal_nums].item_nums; index_xk++) {
-                    int repeat = 0;
-                    if (grammar->firsts[xk + terminal_nums].items[index_xk] == 10) {
-                        is_null = 1;
-                        continue;
-                    }
-                    for (int index_alpha = 0;
-                         index_alpha < grammar->firsts[alpha + terminal_nums].item_nums; index_alpha++) {
-                        if (grammar->firsts[alpha + terminal_nums].items[index_alpha] ==
-                            grammar->firsts[xk + terminal_nums].items[index_xk]) {
-                            repeat = 1;
-                            break;
-                        }
-                    }
-                    if (repeat == 0) {
-                        item[val_pos] = grammar->firsts[xk + terminal_nums].items[index_xk];
-                        val_pos += 1;
-                        is_stable = 0;
-                    }
-                }
+                int epsilon_pos;
+                changed += mergeSet(grammar->firsts[alpha + terminal_nums].items,
+                                    &grammar->firsts[alpha + terminal_nums].item_nums,
+                                    grammar->firsts[xk + terminal_nums].items,
+                                    grammar->firsts[xk + terminal_nums].item_nums, &epsilon_pos, 0);
 
-                // 处理xk的first集中有空串的情况
-                if (is_null==1 && k == grammar->productions[i].gen_nums - 1)
+                // xk的first集含空串
+                if (epsilon_pos!=-1)
                 {
-                    item[val_pos] = 0;
-                    val_pos += 1;
-                    is_stable = 0;
+                    // 判断是否是最后一个符号
+                    if(k == grammar->productions[i].gen_nums - 1)
+                    {
+                        int epsilon_set = 0;
+                        changed += mergeSet(grammar->firsts[alpha + terminal_nums].items,
+                                            &grammar->firsts[alpha + terminal_nums].item_nums,
+                                            &epsilon_set, 1, NULL, 1);
+                    }
                 }
-                // 加入first集新元素
-
-                int pos = grammar->firsts[alpha + terminal_nums].item_nums;
-                if (pos != 0) {
-                    memcpy(item + val_pos, grammar->firsts[alpha + terminal_nums].items, pos * sizeof(int));
-                    free(grammar->firsts[alpha + terminal_nums].items);
-                }
-                grammar->firsts[alpha + terminal_nums].items = (int *) malloc(sizeof(int) * (val_pos + pos));
-                memcpy(grammar->firsts[alpha + terminal_nums].items, item, (val_pos + pos) * sizeof(int));
-                grammar->firsts[alpha + terminal_nums].item_nums += val_pos;
-                if (is_null==0){break;}
+                // xk的first集不含空串，则跳过该产生式
+                else {break;}
             }
         }
-        if (is_stable) {break;}
+        if (changed == 0) {break;}
+    }
+    // 重新为first集分配合适的空间大小
+    for (int i=0; i< non_terminal_nums; i++)
+    {
+        grammar->firsts[i + terminal_nums].items = (int*) realloc(grammar->firsts[i+terminal_nums].items,
+                                                   sizeof(int) * grammar->firsts[i+terminal_nums].item_nums);
     }
 }
 
@@ -312,7 +282,7 @@ void calcFOLLOWSet(pGrammar grammar)
                     {
                         changed += mergeSet(grammar->follows[ch].items,
                                             &grammar->follows[ch].item_nums,
-                                            &next, 1, NULL);
+                                            &next, 1, NULL, 0);
                         break;
                     }
                     else
@@ -323,7 +293,7 @@ void calcFOLLOWSet(pGrammar grammar)
                                              &grammar->follows[ch].item_nums,
                                              grammar->firsts[next + terminal_nums].items,
                                              grammar->firsts[next + terminal_nums].item_nums,
-                                             &epsilon_pos);
+                                             &epsilon_pos, 0);
                         // 后继符号的first集合中没有epsilon，停止遍历
                         if (-1 == epsilon_pos)
                             break;
@@ -338,7 +308,7 @@ void calcFOLLOWSet(pGrammar grammar)
                         changed += mergeSet(grammar->follows[ch].items, &grammar->follows[ch].item_nums,
                                              grammar->follows[grammar->productions[i].production].items,
                                              grammar->follows[grammar->productions[i].production].item_nums,
-                                             NULL);
+                                             NULL, 0);
                 }
             }
         }
