@@ -485,18 +485,18 @@ State closure(PosProduction pos_production, Grammar grammar)
         int last_prod_nums = prod_nums;
         for (int i = 0; i < prod_nums; ++i)
         {
-            int ch;
-            if (prods[i].dot_pos >= prods[i].production.gen_nums)
-                ch = -1;    // 当前规则已经到达末尾，与ch是终结符效果一样，都不会匹配下一个字符，因此直接置为-1
-            else
-                ch = prods[i].production.generative[prods[i].dot_pos];
-            if (ch > 0)
+            // 遍历每个点规则的点后面的产生符号，如果是非终结符，就把它的所有产生式加入到点规则集合中
+            for(int pos = prods[i].dot_pos; pos < prods[i].production.gen_nums; ++pos)
             {
+                int ch = prods[i].production.generative[pos];
+                if (ch < 0) // 如果是终结符，就不用遍历后面的符号了
+                    break;
+                // 如果是非终结符，就需要找到它在左侧的产生式规则
                 for (int j = 0; j < grammar.production_nums; ++j)
                 {
                     if (grammar.productions[j].production == ch)
                     {
-                        int k;
+                        int k; // 判断当前规则是否已经加入了点规则集合
                         for (k = 0; k < prod_nums; ++k)
                         {
                             // 因为新加入的点规则的点一定在生成式的最前面，因此没必要比较点的位置
@@ -523,6 +523,9 @@ State closure(PosProduction pos_production, Grammar grammar)
                         }
                     }
                 }
+                // 如果当前产生符号可以推出空串，就继续遍历下一个符号
+                if (!productEpsilon(grammar, &ch, 1))
+                    break;
             }
         }
         if (last_prod_nums == prod_nums)
