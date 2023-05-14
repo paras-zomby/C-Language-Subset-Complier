@@ -206,11 +206,10 @@ void calcFIRSTSet(pGrammar grammar)
             // 产生式为空处理
             if(grammar->productions[i].gen_nums == 0)
             {
-                int *epsilon_set = malloc(sizeof(int) * 1);
-                *epsilon_set = 0;
+                int epsilon_set = 0;
                 changed += mergeSet(grammar->firsts[alpha + terminal_nums].items,
                          &grammar->firsts[alpha + terminal_nums].item_nums,
-                         epsilon_set, 1, NULL, 1);
+                         &epsilon_set, 1, NULL, 1);
                 continue;
             }
 
@@ -231,11 +230,10 @@ void calcFIRSTSet(pGrammar grammar)
                     // 判断是否是最后一个符号
                     if(k == grammar->productions[i].gen_nums - 1)
                     {
-                        int *epsilon_set = malloc(sizeof(int) * 1);
-                        *epsilon_set = 0;
+                        int epsilon_set = 0;
                         changed += mergeSet(grammar->firsts[alpha + terminal_nums].items,
                                             &grammar->firsts[alpha + terminal_nums].item_nums,
-                                            epsilon_set, 1, NULL, 1);
+                                            &epsilon_set, 1, NULL, 1);
                     }
                 }
                 // xk的first集不含空串，则跳过该产生式
