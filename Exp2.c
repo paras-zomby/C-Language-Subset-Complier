@@ -153,7 +153,7 @@ void processGrammar(FILE *fp, pGrammar grammar)
 
 // 用于合并两个集合，结果放入a中。b中的epsilon不会加入a中。返回值是新增的元素个数
 // epsilon_pos用于记录b中epsilon的位置。传入NULL表示不记录
-// epsilon_val用于表示是否在first集中加入空串，follow集默认是0
+// epsilon_val用于表示是否在first集中加入空串，生成follow集时用0
 int mergeSet(int *a, int* a_size, const int *b, int b_size, int* epsilon_pos, int epsilon_val)
 {
     int pos = *a_size;
@@ -550,6 +550,7 @@ State gotoState(State state, int ch, Grammar grammar)
         for (int j = 0; j < grammar.production_nums; ++j)
         {
             if (grammar.productions[j].production == state.non_core_productions[i]
+                && grammar.productions[j].gen_nums > 0
                 && grammar.productions[j].generative[0] == ch)
             {
                 PosProduction temp = {.production = grammar.productions[j], .dot_pos = 1};
@@ -759,6 +760,7 @@ void printActionTable(ActionTable action_table)
     printf("St \\ elem: ");
     for (int i = -terminal_nums; i < non_terminal_nums; ++i)
     {
+        if (i == 0) continue;
         get_lex(i, temp);
         temp[3] = 0;
         printf("%3s  ", temp);
@@ -770,6 +772,7 @@ void printActionTable(ActionTable action_table)
         printf("State %3d: ", i);
         for (int j = 0; j < elem_nums; ++j)
         {
+            if (j == 0) continue;
             if (action_table.actions[i*elem_nums + j].action_type == ERROR_STATE)
                 printf("ERR  ");
             else if (action_table.actions[i*elem_nums + j].action_type == ACCEPT_STATE)
