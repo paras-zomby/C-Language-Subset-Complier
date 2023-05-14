@@ -151,6 +151,24 @@ void processGrammar(FILE *fp, pGrammar grammar)
     memcpy(grammar->productions, production_buffer, sizeof(Production) * now_production_num);
 }
 
+// 用于判断一个串是否可以推出空
+int productEpsilon(const Grammar grammar, const int* string, int str_nums)
+{
+    // 遍历串中的每一个元素
+    for (int i = 0; i < str_nums; ++i)
+    {
+        int j; // 遍历元素的first集，看是否有空串
+        for (j = 0; j < grammar.firsts[string[i] + terminal_nums].item_nums; ++j)
+            if (grammar.firsts[string[i] + terminal_nums].items[j] == 0)
+                break;
+        // 如果这个元素的first集没有空串，那么整个串就不能推出空
+        if (j == grammar.firsts[string[i] + terminal_nums].item_nums)
+            return 0;
+    }
+    return 1;
+}
+
+
 // 用于合并两个集合，结果放入a中。b中的epsilon不会加入a中。返回值是新增的元素个数
 // epsilon_pos用于记录b中epsilon的位置。传入NULL表示不记录
 // epsilon_val用于表示是否在first集中加入空串，生成follow集时用0
@@ -389,6 +407,7 @@ typedef struct {
 
 State mergeState(State a, State b)
 {
+    // 因为一个状态中不可能只存在非核心产生式，所以如果没有核心产生式就可以直接返回
     if (a.pos_production_nums == 0)
         return b;
     if (b.pos_production_nums == 0)
@@ -432,8 +451,7 @@ int sameState(const State a, const State b)
         {
             // 如果a中的某条点规则与b完全一致
             if (a.pos_productions[i].production.id == b.pos_productions[j].production.id
-            && a.pos_productions[i].dot_pos == b.pos_productions[j].dot_pos
-           )
+                && a.pos_productions[i].dot_pos == b.pos_productions[j].dot_pos)
             {
                 break;
             }
@@ -483,9 +501,7 @@ State closure(PosProduction pos_production, Grammar grammar)
                         {
                             // 因为新加入的点规则的点一定在生成式的最前面，因此没必要比较点的位置
                             if (j == prods[k].production.id)
-                            {
                                 break;
-                            }
                         }
                         if (k == prod_nums)
                         {
@@ -495,12 +511,8 @@ State closure(PosProduction pos_production, Grammar grammar)
                             // 判断当前规则对应的产生符号是否已经加入了非核心产生式
                             int l;
                             for (l = 0; l < non_core_prod_nums; ++l)
-                            {
                                 if (non_core_productions[l] == grammar.productions[j].production)
-                                {
                                     break;
-                                }
-                            }
                             if (l == non_core_prod_nums)
                                 non_core_productions[non_core_prod_nums++] = grammar.productions[j].production;
                             if (prod_nums >= 100)
@@ -695,8 +707,10 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
     {
         for (int j = 0; j < states[i].pos_production_nums; ++j)
         {
-            // 如果点在最后，就要规约
-            if (states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums)
+            // 如果点在最后，就要规约。或者点后面的串可以产生空，也要规约。
+            if (states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums
+                || productEpsilon(grammar, &states[i].pos_productions[j].production.generative[states[i].pos_productions[j].dot_pos],
+                                  states[i].pos_productions[j].production.gen_nums - states[i].pos_productions[j].dot_pos))
             {
                 // 如果是开始符号，就接受
                 if (states[i].pos_productions[j].production.production == 0)
@@ -712,7 +726,7 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
 //                            printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
 //                        action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
 //                        action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
-                        // 如果符号k在状态i的产生式j的左侧元素的FOLLOW集合中，就要规约
+                        // 如果符号k在状态i的产生式j的左侧元素的FOLLOW集合中，就要规约 [SLR(0)]
                         const FOLLOW follow = grammar.follows[states[i].pos_productions[j].production.production];
                         for (int l = 0; l < follow.item_nums; ++l)
                         {
@@ -767,7 +781,7 @@ void printActionTable(ActionTable action_table)
     }
     printf("\n");
 
-    for (int i = 0; i <action_table.state_nums; ++i)
+    for (int i = 0; i < action_table.state_nums; ++i)
     {
         printf("State %3d: ", i);
         for (int j = 0; j < elem_nums; ++j)
