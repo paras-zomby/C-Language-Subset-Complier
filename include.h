@@ -6,6 +6,7 @@
 #define MAX_NUM_LEN 1024            // 最多读入单词数目
 #define MAX_TERMINAL_NUM 64         // 语法定义时直接定义的终结符数目最大值
 #define MAX_NON_TERMINAL_NUM 1024   // 最多非终结符数目
+#define MAX_STATE_STACK_NUM 256     // 状态栈最大大小
 
 
 #define DEFAULT_INPUT_FILE "../input.txt"
