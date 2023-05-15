@@ -22,6 +22,7 @@ const char operator_table[][MAX_IDENT_LEN] = {"+", "-", "*", "/", ">", "<", "=",
 // 从输入流中获取一个词法单元
 Token get_token(FILE *fp)
 {
+    static char last_char = 0;
     Token current_token;
     // 如果已经到达文件结尾，则直接返回
     if (feof(fp))
@@ -30,7 +31,11 @@ Token get_token(FILE *fp)
         strcpy(current_token.str, "");
         return current_token;
     }
-    char current_char = fgetc(fp);
+    char current_char;
+    if (last_char != 0)
+        current_char = last_char;
+    else
+        current_char = fgetc(fp);
     char lexeme_buffer[MAX_TOKEN_LEN] = {0};
     // 如果遇到空白字符，则跳过继续读取下一个词法单元
     if (is_blank(current_char))
@@ -49,6 +54,7 @@ Token get_token(FILE *fp)
             lexeme_buffer[i++] = current_char;
             current_char = fgetc(fp);
         }
+        last_char = current_char;
         lexeme_buffer[i] = '\0';
         // 如果识别出来的是关键字，则将类型设为关键字
         if (is_keyword(lexeme_buffer))
@@ -71,6 +77,7 @@ Token get_token(FILE *fp)
             lexeme_buffer[i++] = current_char;
             current_char = fgetc(fp);
         }
+        last_char = current_char;
         lexeme_buffer[i] = '\0';
         current_token.type = NUMBER_TOKEN;
         strcpy(current_token.str, lexeme_buffer);
@@ -84,6 +91,7 @@ Token get_token(FILE *fp)
             lexeme_buffer[i++] = current_char;
             current_char = fgetc(fp);
         }
+        last_char = current_char;
         lexeme_buffer[i] = '\0';
         if (is_operator(lexeme_buffer))
         {
