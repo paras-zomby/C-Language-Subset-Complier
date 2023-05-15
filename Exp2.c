@@ -778,6 +778,7 @@ void printActionTable(ActionTable action_table)
     printf("St \\ elem: ");
     for (int i = -terminal_nums; i < non_terminal_nums; ++i)
     {
+        // 跳过START列
         if (i == 0) continue;
         get_lex(i, temp);
         temp[3] = 0;
@@ -788,9 +789,10 @@ void printActionTable(ActionTable action_table)
     for (int i = 0; i < action_table.state_nums; ++i)
     {
         printf("State %3d: ", i);
+        // 此时j是平移后的id，从0开始计数
         for (int j = 0; j < elem_nums; ++j)
         {
-            if (j == 0) continue;
+            if (j == terminal_nums) continue;
             if (action_table.actions[i*elem_nums + j].action_type == ERROR_STATE)
                 printf("ERR  ");
             else if (action_table.actions[i*elem_nums + j].action_type == ACCEPT_STATE)
