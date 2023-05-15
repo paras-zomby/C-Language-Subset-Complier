@@ -743,13 +743,16 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                     for (int l = 0; l < follow.item_nums; ++l)
                     {
                         int idx = i * grammar.item_nums + follow.items[l] + terminal_nums;
-                        // 如果出现了冲突， 显示详细冲突信息并且用新状态覆盖就状态（优先规约）
+                        // 如果出现了冲突， 显示详细冲突信息并且用新状态覆盖就状态（优先移入）
                         if(action_buffer[idx].action_type != EMPTY_STATE)
                             printf("Warning: conflict in state %d, symbol %d."
                                    " OLD state: [%d, %d], NEW state: [%d, %d].\n", i, follow.items[l] - terminal_nums,
                                    action_buffer[idx].action_type, action_buffer[idx].value, REDUCE_STATE, new_value);
-                        action_buffer[idx].action_type = REDUCE_STATE;
-                        action_buffer[idx].value = new_value;
+                        else
+                        {
+                            action_buffer[idx].action_type = REDUCE_STATE;
+                            action_buffer[idx].value = new_value;
+                        }
                     }
                 }
             }
