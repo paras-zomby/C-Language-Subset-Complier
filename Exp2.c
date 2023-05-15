@@ -202,7 +202,7 @@ void calcFIRSTSet(pGrammar grammar)
 {
     grammar->firsts = (pFIRST) malloc(sizeof(FIRST) * grammar->item_nums);
     // 初始化非终极符的first集
-    for (int i=0; i<non_terminal_nums;i++)
+    for (int i = 0; i < non_terminal_nums; ++i)
     {
         grammar->firsts[i + terminal_nums].items = malloc(sizeof(int) * terminal_nums);
         grammar->firsts[i + terminal_nums].item_nums = 0;
@@ -215,9 +215,11 @@ void calcFIRSTSet(pGrammar grammar)
         grammar->firsts[i + terminal_nums].items[0] = i;
     }
     // 循环求first集直到不再变化
-    while(1){
+    while (1)
+    {
         int changed = 0;
-        for (int i = 0; i < grammar->production_nums; i++) {
+        for (int i = 0; i < grammar->production_nums; ++i)
+        {
             // 产生式左部
             int alpha = grammar->productions[i].production;
 
@@ -226,14 +228,13 @@ void calcFIRSTSet(pGrammar grammar)
             {
                 int epsilon_set = 0;
                 changed += mergeSet(grammar->firsts[alpha + terminal_nums].items,
-                         &grammar->firsts[alpha + terminal_nums].item_nums,
-                         &epsilon_set, 1, NULL, 1);
+                                 &grammar->firsts[alpha + terminal_nums].item_nums,
+                                    &epsilon_set, 1, NULL, 1);
                 continue;
             }
 
             // 产生式右部不为空
-            int k = 0;
-            for (; k < grammar->productions[i].gen_nums; k++)
+            for (int k = 0; k < grammar->productions[i].gen_nums; ++k)
             {
                 int xk = grammar->productions[i].generative[k];
                 int epsilon_pos;
@@ -243,7 +244,7 @@ void calcFIRSTSet(pGrammar grammar)
                                     grammar->firsts[xk + terminal_nums].item_nums, &epsilon_pos, 0);
 
                 // xk的first集含空串
-                if (epsilon_pos!=-1)
+                if (epsilon_pos != -1)
                 {
                     // 判断是否是最后一个符号
                     if(k == grammar->productions[i].gen_nums - 1)
@@ -255,16 +256,18 @@ void calcFIRSTSet(pGrammar grammar)
                     }
                 }
                 // xk的first集不含空串，则跳过该产生式
-                else {break;}
+                else
+                    break;
             }
         }
-        if (changed == 0) {break;}
+        if (changed == 0)
+            break;
     }
     // 重新为first集分配合适的空间大小
-    for (int i=0; i< non_terminal_nums; i++)
+    for (int i = 0; i < non_terminal_nums; ++i)
     {
-        grammar->firsts[i + terminal_nums].items = (int*) realloc(grammar->firsts[i+terminal_nums].items,
-                                                   sizeof(int) * grammar->firsts[i+terminal_nums].item_nums);
+        grammar->firsts[i + terminal_nums].items = (int*) realloc(grammar->firsts[i + terminal_nums].items,
+                                                   sizeof(int) * grammar->firsts[i + terminal_nums].item_nums);
     }
 }
 
