@@ -10,11 +10,12 @@ D @ L id ; D
 D @
 L @ int
 L @ float
-S @ id = E ;
-S @ if ( C )  S
-S @ if ( C )  S  else  S
+S @ id = E
+S @ if ( C ) S
+S @ if ( C ) S else S
 S @ while ( C ) S
 S @ S ; S
+S @
 C @ E > E
 C @ E < E
 C @ E == E
