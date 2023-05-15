@@ -712,42 +712,46 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
         for (int j = 0; j < states[i].pos_production_nums; ++j)
         {
             // 如果点在最后，就要规约。或者点后面的串可以产生空，也要规约。
-            if (states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums
-                || productEpsilon(grammar, &states[i].pos_productions[j].production.generative[states[i].pos_productions[j].dot_pos],
-                                  states[i].pos_productions[j].production.gen_nums - states[i].pos_productions[j].dot_pos))
+            int finished = states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums;
+            int product_epsilon = productEpsilon(grammar, &states[i].pos_productions[j].production.generative[states[i].pos_productions[j].dot_pos],
+                                  states[i].pos_productions[j].production.gen_nums - states[i].pos_productions[j].dot_pos);
+            if (finished || product_epsilon)
             {
                 // 如果是开始符号，就接受
                 if (states[i].pos_productions[j].production.production == 0)
-                {
                     action_buffer[i * grammar.item_nums].action_type = ACCEPT_STATE;
-                }
-                else
+                else // 否则就规约
                 {
-                    for (int k = 0; k < grammar.item_nums; ++k)
+                    int new_value;
+                    // 如果是因为点后面的符号可以产生空而规约
+                    if (product_epsilon)
                     {
-//                         // 不考虑FOLLOW集合直接规约
-//                        if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
-//                            printf("Warning: conflict in state %d, symbol %d\n", i, k - terminal_nums);
-//                        action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
-//                        action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
-                        // 如果符号k在状态i的产生式j的左侧元素的FOLLOW集合中，就要规约 [SLR(0)]
-                        const FOLLOW follow = grammar.follows[states[i].pos_productions[j].production.production];
-                        for (int l = 0; l < follow.item_nums; ++l)
+                        for (int k = 0; k < grammar.production_nums; ++k)
                         {
-                            // 元素k在FOLLOW集合中，注意k从0开始，要平移到负数表示实际符号id
-                            if (follow.items[l] == k - terminal_nums)
+                            // 找到产生式左侧为点后面的符号且产生空的产生式id
+                            if (grammar.productions[k].gen_nums == 0 && grammar.productions[k].production ==
+                            states[i].pos_productions[j].production.generative[states[i].pos_productions[j].dot_pos])
                             {
-                                // 如果出现了冲突， 显示详细冲突信息并且用新状态覆盖就状态（优先规约）
-                                if(action_buffer[i * grammar.item_nums + k].action_type != EMPTY_STATE)
-                                    printf("Warning: conflict in state %d, symbol %d."
-                                           " OLD state: [%d, %d], NEW state: [%d, %d].\n", i, k - terminal_nums,
-                                           action_buffer[i * grammar.item_nums + k].action_type,
-                                           action_buffer[i * grammar.item_nums + k].value,
-                                           REDUCE_STATE, states[i].pos_productions[j].production.id);
-                                action_buffer[i * grammar.item_nums + k].action_type = REDUCE_STATE;
-                                action_buffer[i * grammar.item_nums + k].value = states[i].pos_productions[j].production.id;
+                                new_value = k;
+                                break;
                             }
                         }
+                    }
+                    else // 如果因为点在最后规约，就直接用产生式的id
+                        new_value = states[i].pos_productions[j].production.id;
+
+                    // 将所有状态i的产生式j的左侧元素的FOLLOW集合中的符号规约 [SLR(0)]
+                    const FOLLOW follow = grammar.follows[states[i].pos_productions[j].production.production];
+                    for (int l = 0; l < follow.item_nums; ++l)
+                    {
+                        int idx = i * grammar.item_nums + follow.items[l] + terminal_nums;
+                        // 如果出现了冲突， 显示详细冲突信息并且用新状态覆盖就状态（优先规约）
+                        if(action_buffer[idx].action_type != EMPTY_STATE)
+                            printf("Warning: conflict in state %d, symbol %d."
+                                   " OLD state: [%d, %d], NEW state: [%d, %d].\n", i, follow.items[l] - terminal_nums,
+                                   action_buffer[idx].action_type, action_buffer[idx].value, REDUCE_STATE, new_value);
+                        action_buffer[idx].action_type = REDUCE_STATE;
+                        action_buffer[idx].value = new_value;
                     }
                 }
             }
