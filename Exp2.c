@@ -497,7 +497,8 @@ State closure(PosProduction pos_production, Grammar grammar)
                     if (grammar.productions[j].production == ch)
                     {
                         int k; // 判断当前规则是否已经加入了点规则集合
-                        for (k = 0; k < prod_nums; ++k)
+                        // 新加入的规则不需要和待求闭包的规则比较，因为点的位置不一样
+                        for (k = 1; k < prod_nums; ++k)
                         {
                             // 因为新加入的点规则的点一定在生成式的最前面，因此没必要比较点的位置
                             if (j == prods[k].production.id)
