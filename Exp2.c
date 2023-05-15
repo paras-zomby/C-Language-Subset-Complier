@@ -711,11 +711,9 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
     {
         for (int j = 0; j < states[i].pos_production_nums; ++j)
         {
-            // 如果点在最后，就要规约。或者点后面的串可以产生空，也要规约。
-            int finished = states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums;
-            int product_epsilon = productEpsilon(grammar, &states[i].pos_productions[j].production.generative[states[i].pos_productions[j].dot_pos],
-                                  states[i].pos_productions[j].production.gen_nums - states[i].pos_productions[j].dot_pos);
-            if (finished || product_epsilon)
+            // 如果点后面的串可以产生空，要规约（包括点在最后的情况）。
+            if (productEpsilon(grammar, &states[i].pos_productions[j].production.generative[states[i].pos_productions[j].dot_pos],
+                                  states[i].pos_productions[j].production.gen_nums - states[i].pos_productions[j].dot_pos))
             {
                 // 如果是开始符号，就接受
                 if (states[i].pos_productions[j].production.production == 0)
@@ -723,8 +721,10 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                 else // 否则就规约
                 {
                     int new_value;
-                    // 如果是因为点后面的符号可以产生空而规约
-                    if (product_epsilon)
+                    // 如果因为点在最后规约，就直接用产生式的id
+                    if (states[i].pos_productions[j].dot_pos == states[i].pos_productions[j].production.gen_nums)
+                        new_value = states[i].pos_productions[j].production.id;
+                    else // 如果是因为点后面还有其他符号，这些符号可以产生空而规约
                     {
                         for (int k = 0; k < grammar.production_nums; ++k)
                         {
@@ -737,8 +737,6 @@ void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTa
                             }
                         }
                     }
-                    else // 如果因为点在最后规约，就直接用产生式的id
-                        new_value = states[i].pos_productions[j].production.id;
 
                     // 将所有状态i的产生式j的左侧元素的FOLLOW集合中的符号规约 [SLR(0)]
                     const FOLLOW follow = grammar.follows[states[i].pos_productions[j].production.production];
