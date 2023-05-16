@@ -214,21 +214,6 @@ void printStates(AutomatonStates automaton_states)
 
 void getActionTable(Grammar grammar, AutomatonStates* automaton_states, ActionTable *action_table)
 {
-    // 检查传入的参数是否为空，不为空要释放原地址空间
-    if (automaton_states->states != NULL)
-    {
-        free(automaton_states->states);
-        automaton_states->states = NULL;
-        automaton_states->state_nums = 0;
-    }
-    if (action_table->actions != NULL)
-    {
-        free(action_table->actions);
-        action_table->actions = NULL;
-        action_table->action_nums = 0;
-        action_table->state_nums = 0;
-    }
-
     // 前terminal_nums个是action表，后non_terminal_nums个是goto表。
     pAction action_buffer = (pAction)malloc(sizeof(Action) * grammar.item_nums * 512);
     memset(action_buffer, 0, sizeof(Action) * grammar.item_nums * 512);

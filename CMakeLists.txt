@@ -11,4 +11,14 @@ add_executable(CompilersPrinciplesExp2
         GrammarProcess.c
         ActionTableGeneration.c
         SyntaxAnalysis.c
+        CodeGeneration.c
+        )
+add_executable(CompilersPrinciplesExp3
+        Exp3.c
+        include.h
+        LexicalAnalysis.c
+        GrammarProcess.c
+        ActionTableGeneration.c
+        SyntaxAnalysis.c
+        CodeGeneration.c
         )

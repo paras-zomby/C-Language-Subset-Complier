@@ -1,5 +1,7 @@
 #include "include.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void freeStack(pStack stack)
 {
@@ -8,21 +10,21 @@ void freeStack(pStack stack)
 
 void initialStack(pStack stack, int size)
 {
-    stack->pool = (int *) malloc(sizeof(int) * size);
+    stack->pool = (pStackElem) malloc(sizeof(StackElem) * size);
     stack->top = -1;
 }
 
-void pushStack(pStack stack, int item)
+void pushStack(pStack stack, StackElem item)
 {
     stack->pool[++stack->top] = item;
 }
 
-int popStack(pStack stack)
+StackElem popStack(pStack stack)
 {
     return stack->pool[stack->top--];
 }
 
-int topStack(pStack stack)
+StackElem topStack(pStack stack)
 {
     return stack->pool[stack->top];
 }
@@ -32,22 +34,32 @@ void printStack(const Stack stack)
     printf("stack: ");
     for (int i = 0; i <= stack.top; ++i)
     {
-        printf("%3d ", stack.pool[i]);
+        printf("%3d ", stack.pool[i].state_id);
     }
     printf("\n");
 }
 
 // 根据action表和goto表，分析输入串。
-int Parsing(FILE *fp, ActionTable action_table, Grammar grammar)
+int ParseAndGenerate(FILE *fp, ActionTable action_table, Grammar grammar, pGenerateCodes generate_codes)
 {
     // 初始化状态栈
-    Stack state_stack;
-    initialStack(&state_stack, MAX_STATE_STACK_NUM);
+    Stack stack;
+    initialStack(&stack, MAX_STATE_STACK_NUM);
+    // 初始化生成部分
+    pAttribute attributes;
+    if (generate_codes != NULL)
+    {
+        generate_codes->codes = (pGenerateCode) malloc(sizeof(GenerateCode) * MAX_GEN_CODE_NUM);
+        generate_codes->code_nums = 0;
+        attributes = (pAttribute) malloc(sizeof(Attribute) * grammar.item_nums);
+        memset(attributes, 0, sizeof(Attribute) * grammar.item_nums);
+    }
     // 逐个字符分析源程序
     Token current_token; //词法分析结果
-    int token_id; // 对应的标号
-    int flag_s = 1;
-    int result;
+    int input_token_id; // 输入符号的id
+    int flag_s = 1;     // 标记是否需要读入新的输入
+    int result = 0;     // 标记是否分析成功
+    int elem_nums = action_table.action_nums / action_table.state_nums;
     printf("======[Syntax Analysis]======\n");
     while (1)
     {
@@ -55,76 +67,61 @@ int Parsing(FILE *fp, ActionTable action_table, Grammar grammar)
         if (flag_s)
         {
             current_token = get_token(fp);
-            if (current_token.type == END_OF_FILE_TOKEN)
-            {
-                token_id = get_id("$");
-            }
-            else if (current_token.type == ERROR_TOKEN)
-            {
-                continue;
-            }
-            else if (current_token.type == IDENTIFIER_TOKEN)
-            {
-                token_id = get_id("id");
-            }
+            if (current_token.type == IDENTIFIER_TOKEN)
+                input_token_id = get_id("id");
             else if (current_token.type == NUMBER_TOKEN)
-            {
-                token_id = get_id("digits");
-            }
+                input_token_id = get_id("digits");
+            else if (current_token.type == ERROR_TOKEN)
+                continue;
             else
-            {
-                token_id = get_id(current_token.str);
-            }
-            token_id += terminal_nums;
+                input_token_id = get_id(current_token.str);
+
+            input_token_id += terminal_nums;
             flag_s = 0;
         }
-        int elem_nums = action_table.action_nums / action_table.state_nums;
-        int current_state = topStack(&state_stack);
-        if (action_table.actions[current_state * elem_nums + token_id].action_type == ERROR_STATE)
+        StackElem current = topStack(&stack);
+        if (action_table.actions[current.state_id * elem_nums + input_token_id].action_type == ERROR_STATE)
         {
-            char temp[MAX_TOKEN_LEN];
-            get_lex(token_id - terminal_nums, temp);
-            printStack(state_stack);
-            printf("input: %6s  ERROR\n", temp);
-            freeStack(&state_stack);
+            printStack(stack);
+            printf("input: %6s  ERROR\n", current_token.str);
+            freeStack(&stack);
+            if (generate_codes != NULL)
+                free(generate_codes->codes);
             result = 0;
             break;
         }
-        else if (action_table.actions[current_state * elem_nums + token_id].action_type == ACCEPT_STATE)
+        else if (action_table.actions[current.state_id * elem_nums + input_token_id].action_type == ACCEPT_STATE)
         {
-            char temp[MAX_TOKEN_LEN];
-            get_lex(token_id - terminal_nums, temp);
-            printStack(state_stack);
-            printf("input: %6s  ACCEPT\n", temp);
-            freeStack(&state_stack);
+            printStack(stack);
+            printf("input: %6s  ACCEPT\n", current_token.str);
+            freeStack(&stack);
+            if (generate_codes != NULL)
+                generate_codes->codes = (pGenerateCode) realloc(generate_codes->codes, sizeof(GenerateCode) * generate_codes->code_nums);
             result = 1;
             break;
         }
-        else if (action_table.actions[current_state * elem_nums + token_id].action_type == REDUCE_STATE)
+        else if (action_table.actions[current.state_id * elem_nums + input_token_id].action_type == REDUCE_STATE)
         {
-            char temp[MAX_TOKEN_LEN];
-            get_lex(token_id - terminal_nums, temp);
-            printStack(state_stack);
-            printf("INPUT: %6s  ACTION: R%3d\n", temp, action_table.actions[current_state * elem_nums + token_id].value);
-            int num = action_table.actions[current_state * elem_nums + token_id].value;
+            printStack(stack);
+            int num = action_table.actions[current.state_id * elem_nums + input_token_id].value;
+            printf("INPUT: %6s  ACTION: R%3d\n", current_token.str, num);
             Production prod = grammar.productions[num];
             int new_symbol = prod.production + terminal_nums;
-            int reduce_num = prod.gen_nums;
-            while(reduce_num--)
-            {
-                popStack(&state_stack);
-            }
-            current_state = topStack(&state_stack);
-            int new_state = action_table.actions[current_state * elem_nums + new_symbol].value;
-            pushStack(&state_stack, new_state);
+            pStackElem pop_elems = (pStackElem) malloc(sizeof(StackElem) * prod.gen_nums);
+            for (int i = 0; i < prod.gen_nums; ++i)
+                pop_elems[i] = popStack(&stack);
+            generateCode(generate_codes, prod, attributes, pop_elems);
+            current = topStack(&stack);
+            int new_state = action_table.actions[current.state_id * elem_nums + new_symbol].value;
+            StackElem next = {new_state, new_symbol};
+            pushStack(&stack, next);
         }
         else
         {
-            char temp[MAX_TOKEN_LEN];
-            get_lex(token_id - terminal_nums, temp);
-            printStack(state_stack);
-            printf("INPUT: %6s  ACTION: T%3d\n", temp, action_table.actions[current_state * elem_nums + token_id].value);
-            pushStack(&state_stack, action_table.actions[current_state * elem_nums + token_id].value);
+            printStack(stack);
+            StackElem next = {action_table.actions[current.state_id * elem_nums + input_token_id].value, input_token_id};
+            printf("INPUT: %6s  ACTION: T%3d\n", current_token.str, next.state_id);
+            pushStack(&stack, next);
             flag_s = 1; //可以接受新的输入
         }
     }

@@ -28,7 +28,7 @@ Token get_token(FILE *fp)
     if (feof(fp))
     {
         current_token.type = END_OF_FILE_TOKEN;
-        strcpy(current_token.str, "");
+        strcpy(current_token.str, "$");
         return current_token;
     }
     char current_char;
@@ -109,7 +109,7 @@ Token get_token(FILE *fp)
     else if (feof(fp))
     {
         current_token.type = END_OF_FILE_TOKEN;
-        strcpy(current_token.str, "");
+        strcpy(current_token.str, "$");
     }
     // 如果遇到无法识别的字符，则忽略掉并打印错误信息
     else

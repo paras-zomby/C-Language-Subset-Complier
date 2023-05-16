@@ -14,8 +14,8 @@ int main(int argc, char *argv[])
     }
     Grammar grammar = generateGrammar(fp);
     printGrammar(grammar);
-    AutomatonStates automaton_states = {NULL, 0};
-    ActionTable action_table = {NULL, 0, 0};
+    AutomatonStates automaton_states;
+    ActionTable action_table;
     getActionTable(grammar, &automaton_states, &action_table);
     printStates(automaton_states);
     printActionTable(action_table);
@@ -26,6 +26,10 @@ int main(int argc, char *argv[])
         print_error("Input File can't be opened, exit........");
         exit(-2);
     }
-    Parsing(fp1, action_table, grammar);
+    int ret = ParseAndGenerate(fp1, action_table, grammar, NULL);
+    if (ret)
+        printf("Parse success!\n");
+    else
+        printf("Parse failed!\n");
     return 0;
 }

@@ -11,6 +11,7 @@
 #define MAX_TERMINAL_NUM 64         // 语法定义时直接定义的终结符数目最大值
 #define MAX_NON_TERMINAL_NUM 1024   // 最多非终结符数目
 #define MAX_STATE_STACK_NUM 256     // 状态栈最大大小
+#define MAX_GEN_CODE_NUM 256        // 最大中间代码数目
 
 
 // 定义文件路径
@@ -91,9 +92,52 @@ typedef struct {
 
 // 栈
 typedef struct {
-    int* pool;
+    int state_id;
+    int token_id;
+    char token_str[MAX_TOKEN_LEN];
+} StackElem, *pStackElem;
+
+typedef struct {
+    pStackElem pool;
     int top;
 }Stack, *pStack;
+
+typedef union {
+    struct {
+        int ins_id;
+    } auxiliary_elem;
+    struct {
+        int type_id;
+    } terminal_elem;
+    struct {
+        int * true_list;
+        int * false_list;
+        int true_nums;
+        int false_nums;
+    } condition_elem;
+    struct {
+        int * next_list;
+        int next_nums;
+    } statement_elem;
+} Attribute, *pAttribute;
+
+typedef struct {
+    enum {
+        JUMP,
+        CONDITIONAL_JUMP,
+        ASSIGNMENT,
+    } code_type;
+    union {
+      int jump_target;
+      int op_id; // 取值和语法符号表中的id一致
+      char params[3][MAX_TOKEN_LEN];
+    } code;
+} GenerateCode, *pGenerateCode;
+
+typedef struct {
+    pGenerateCode codes;
+    int code_nums;
+} GenerateCodes, *pGenerateCodes;
 
 
 // 定义全局变量
@@ -144,10 +188,13 @@ void printActionTable(ActionTable action_table);
 // SyntaxAnalysis
 void freeStack(pStack stack);
 void initialStack(pStack stack, int size);
-void pushStack(pStack stack, int item);
-int popStack(pStack stack);
-int topStack(pStack stack);
+void pushStack(pStack stack, StackElem item);
+StackElem popStack(pStack stack);
+StackElem topStack(pStack stack);
 void printStack(Stack stack);
-int Parsing(FILE *fp, ActionTable action_table, Grammar grammar);
+int ParseAndGenerate(FILE *fp, ActionTable action_table, Grammar grammar, pGenerateCodes generate_codes);
+
+// GenerateCode
+void generateCode(pGenerateCodes generate_codes, Production production, pAttribute attributes, pStackElem elems);
 
 #endif //_INCLUDE_H_
