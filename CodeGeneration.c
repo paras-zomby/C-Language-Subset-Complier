@@ -1,9 +1,10 @@
+#include <stdlib.h>
 #include <string.h>
 #include "include.h"
 
 int mergeList(int **dst, int *src1, const int src1_size, int *src2, const int src2_size)
 {
-    *dst = (int*) malloc(sizeof(int) * (src1_size + src2_size));
+    *dst = (int *) malloc(sizeof(int) * (src1_size + src2_size));
     memcpy(*dst, src1, sizeof(int) * src1_size);
     int pos = src1_size;
     for (int i = 0; i < src2_size; ++i)
@@ -21,19 +22,20 @@ int mergeList(int **dst, int *src1, const int src1_size, int *src2, const int sr
     return pos;
 }
 
-int* makeList(int i)
+int *makeList(int i)
 {
-    int *a = (int*) malloc(sizeof(int) * 1);
+    int *a = (int *) malloc(sizeof(int) * 1);
     a[0] = i;
     return a;
 }
 
-void backPatch(pGenerateCodes generate_codes , const int * list, int list_size, int target)
+void backPatch(pGenerateCodes generate_codes, int *list, int list_size, int target)
 {
     for (int i = 0; i < list_size; ++i)
     {
         generate_codes->codes[list[i]].code.jump_target = target;
     }
+    free(list);
 }
 
 Attribute generateCode(pGenerateCodes generate_codes, Production production, pStackElem elems)
