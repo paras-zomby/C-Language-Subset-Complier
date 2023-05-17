@@ -104,11 +104,15 @@ typedef struct {
 
 typedef union {
     struct {
-        int ins_id;
+        int ins_pos;
     } auxiliary_elem;
     struct {
         int type_id;
     } terminal_elem;
+    struct {
+        int type_id;
+        char str[MAX_TOKEN_LEN];
+    } operator_elem;
     struct {
         int * true_list;
         int * false_list;
@@ -127,7 +131,7 @@ typedef struct {
         CONDITIONAL_JUMP,
         ASSIGNMENT,
     } code_type;
-    union {
+    struct {
       int jump_target;
       int op_id; // 取值和语法符号表中的id一致
       char params[3][MAX_TOKEN_LEN];
@@ -195,6 +199,6 @@ void printStack(Stack stack);
 int ParseAndGenerate(FILE *fp, ActionTable action_table, Grammar grammar, pGenerateCodes generate_codes);
 
 // GenerateCode
-void generateCode(pGenerateCodes generate_codes, Production production, pAttribute attributes, pStackElem elems);
-
+void generateCode(pGenerateCodes generate_codes, Production production, pAttribute attributes, pStackElem elems, Stack stack);
+void assignAttribute(pAttribute attributes, Stack stack);
 #endif //_INCLUDE_H_
