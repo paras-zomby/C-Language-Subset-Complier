@@ -47,13 +47,10 @@ int ParseAndGenerate(FILE *fp, ActionTable action_table, Grammar grammar, pGener
     initialStack(&stack, MAX_STATE_STACK_NUM);
     pushStack(&stack, (StackElem){.state_id = 0});
     // 初始化生成部分
-    pAttribute attributes;
     if (generate_codes != NULL)
     {
         generate_codes->codes = (pGenerateCode) malloc(sizeof(GenerateCode) * MAX_GEN_CODE_NUM);
         generate_codes->code_nums = 0;
-        attributes = (pAttribute) malloc(sizeof(Attribute) * MAX_STATE_STACK_NUM);
-        memset(attributes, 0, sizeof(Attribute) * MAX_STATE_STACK_NUM);
     }
     // 逐个字符分析源程序
     Token current_token; //词法分析结果
@@ -112,13 +109,11 @@ int ParseAndGenerate(FILE *fp, ActionTable action_table, Grammar grammar, pGener
             for (int i = 0; i < prod.gen_nums; ++i)
                 pop_elems[i] = popStack(&stack);
             if (generate_codes != NULL)
-                generateCode(generate_codes, prod, attributes, pop_elems, stack);
+                generateCode(generate_codes, prod, pop_elems);
             current = topStack(&stack);
             int new_state = action_table.actions[current.state_id * elem_nums + new_symbol].value;
             StackElem next = {new_state, new_symbol};
             pushStack(&stack, next);
-            if (generate_codes != NULL)
-                assignAttribute(attributes, stack);
         }
         else
         {

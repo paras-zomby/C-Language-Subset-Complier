@@ -90,19 +90,7 @@ typedef struct {
     int state_nums;     // 状态数，也是表格的行数
 } ActionTable, *pActionTable;
 
-// 栈
-typedef struct {
-    int state_id;
-    int token_id;
-    char token_str[MAX_TOKEN_LEN];
-} StackElem, *pStackElem;
-
-typedef struct {
-    pStackElem pool;
-    int top;
-}Stack, *pStack;
-
-typedef union {
+typedef union {         // 符号属性
     struct {
         int ins_pos;
     } auxiliary_elem;
@@ -112,7 +100,7 @@ typedef union {
     struct {
         int type_id;
         char str[MAX_TOKEN_LEN];
-    } operator_elem;
+    } variable_elem;
     struct {
         int * true_list;
         int * false_list;
@@ -124,6 +112,18 @@ typedef union {
         int next_nums;
     } statement_elem;
 } Attribute, *pAttribute;
+
+// 栈
+typedef struct {
+    int state_id;           // 状态栈id
+    int token_id;           // 符号栈id
+    Attribute attribute;    // 符号属性
+} StackElem, *pStackElem;
+
+typedef struct {
+    pStackElem pool;
+    int top;
+}Stack, *pStack;
 
 typedef struct {
     enum {
@@ -199,6 +199,6 @@ void printStack(Stack stack);
 int ParseAndGenerate(FILE *fp, ActionTable action_table, Grammar grammar, pGenerateCodes generate_codes);
 
 // GenerateCode
-void generateCode(pGenerateCodes generate_codes, Production production, pAttribute attributes, pStackElem elems, Stack stack);
+Attribute generateCode(pGenerateCodes generate_codes, Production production, pStackElem elems);
 void assignAttribute(pAttribute attributes, Stack stack);
 #endif //_INCLUDE_H_

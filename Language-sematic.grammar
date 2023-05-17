@@ -1,0 +1,32 @@
+# 文件是纯ASCII码，用@符号代替->，右侧无产生式代表空串
+# 一行是一条产生式，不支持使用"|"符号表示多个产生式
+# 目前程序最多支持右侧产生10个不同的产生式
+# 不同的元素之间用空格隔开
+# 用#开头代表注释语句
+# 结尾至少有一个空行
+
+P @ D S
+D @ L id ; D
+D @
+L @ int
+L @ float
+S @ id = E
+S @ if ( C ) M S
+S @ if ( C ) M S N else M S
+S @ while M ( C ) M S
+M @
+N @
+S @ S ; M S
+S @
+C @ E > E
+C @ E < E
+C @ E == E
+E @ E + T
+E @ E - T
+E @ T
+T @ F
+T @ T * F
+T @ T / F
+F @ ( E )
+F @ id
+F @ digits
