@@ -91,7 +91,6 @@ Attribute generateCode(pGenerateCodes generate_codes, Production production, pSt
                                             elems[3].attribute.statement_elem.next_nums,
                                             elems[4].attribute.statement_elem.next_list,
                                             elems[4].attribute.statement_elem.next_nums);
-
             attribute.statement_elem.next_nums = mergeList(
                                                 &attribute.statement_elem.next_list,
                                                 temp.statement_elem.next_list,
@@ -101,13 +100,13 @@ Attribute generateCode(pGenerateCodes generate_codes, Production production, pSt
             break;
 
         case 9: // while M1 ( B ) M2 S1
-            // 回填1
+            // 回填S1.next
             backPatch(generate_codes,
                       elems[0].attribute.statement_elem.next_list,
                       elems[0].attribute.statement_elem.next_nums,
                       elems[5].attribute.auxiliary_elem.ins_pos);
 
-            // 回填2
+            // 回填B.true
             backPatch(generate_codes,
                       elems[3].attribute.condition_elem.true_list,
                       elems[3].attribute.condition_elem.true_nums,

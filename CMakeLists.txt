@@ -3,9 +3,9 @@ project(CompilersPrinciplesExp C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(CompilersPrinciplesExp1 Exp1.c LexicalAnalysis.c)
-add_executable(CompilersPrinciplesExp2
-        Exp2.c
+add_executable(CompilersPrinciplesStage1 Stage1.c LexicalAnalysis.c)
+add_executable(CompilersPrinciplesStage2
+        Stage2.c
         include.h
         LexicalAnalysis.c
         GrammarProcess.c
@@ -13,8 +13,8 @@ add_executable(CompilersPrinciplesExp2
         SyntaxAnalysis.c
         CodeGeneration.c
         )
-add_executable(CompilersPrinciplesExp3
-        Exp3.c
+add_executable(CompilersPrinciplesStage3
+        Stage3.c
         include.h
         LexicalAnalysis.c
         GrammarProcess.c
