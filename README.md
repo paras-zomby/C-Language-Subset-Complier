@@ -7,7 +7,7 @@
 
 stage1~3分别对应词法、语法、语义三个阶段，每个阶段都有一个`Stage.c`文件。
 语法规则定义在`Language.grammar`中。而中间代码生成使用的新语义规则定义
-在`Language-semantic。grammar`中。
+在`Language-semantic.grammar`中。
 
 ## 已知问题
 
